@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, Download, RefreshCw, Camera, Heart, Palette, MessageSquare, LayoutGrid, Trash2, History, Video, ShoppingBag, Plus, Tag, Clapperboard, Maximize2, X, LayoutTemplate, Layers } from 'lucide-react';
-import { generateAvatarVariations, generateAngleVariations, generateProductMockup, fileToGenerativePart, generateProductVariations, generateDirectorsCut, generateIGCarousel } from './services/geminiService';
-import { GeneratedImage, GenerationStatus } from './types';
+import { Sparkles, Download, RefreshCw, Camera, Heart, Palette, MessageSquare, LayoutGrid, Trash2, History, Video, ShoppingBag, Plus, Tag, Clapperboard, Maximize2, X, LayoutTemplate, Layers, Megaphone, Copy, Check } from 'lucide-react';
+import { generateAvatarVariations, generateAngleVariations, generateProductMockup, fileToGenerativePart, generateProductVariations, generateDirectorsCut, generateIGCarousel, generateMarketingCopy } from './services/geminiService';
+import { GeneratedImage, GeneratedCopy, GenerationStatus } from './types';
 import { Button } from './components/Button';
 import { ColorSwatch } from './components/ColorSwatch';
 import { SCENERIES, STYLES, COLORS } from './constants';
@@ -9,7 +9,7 @@ import { saveImagesToDB, getImagesFromDB, deleteImageFromDB, clearDB } from './s
 
 const App: React.FC = () => {
   const [view, setView] = useState<'studio' | 'gallery'>('studio');
-  const [studioMode, setStudioMode] = useState<'model' | 'product' | 'carousel'>('model');
+  const [studioMode, setStudioMode] = useState<'model' | 'product' | 'carousel' | 'copy'>('model');
   const [generationType, setGenerationType] = useState<'creative' | 'directors'>('creative');
   
   // Single Upload State (Model / Product modes)
@@ -27,6 +27,13 @@ const App: React.FC = () => {
   const [carouselProductBase64, setCarouselProductBase64] = useState<string | null>(null);
 
   const [carouselThemeColor, setCarouselThemeColor] = useState<string | null>(null); // Hex code
+
+  // Marketing Copy State
+  const [marketingProduct, setMarketingProduct] = useState('');
+  const [marketingContext, setMarketingContext] = useState('');
+  const [marketingAudience, setMarketingAudience] = useState('');
+  const [copyResult, setCopyResult] = useState<GeneratedCopy | null>(null);
+  const [copiedSection, setCopiedSection] = useState<string | null>(null);
 
   const [status, setStatus] = useState<GenerationStatus>(GenerationStatus.IDLE);
   const [results, setResults] = useState<GeneratedImage[]>([]);
@@ -76,7 +83,7 @@ const App: React.FC = () => {
     }
   };
 
-  const switchStudioMode = (mode: 'model' | 'product' | 'carousel') => {
+  const switchStudioMode = (mode: 'model' | 'product' | 'carousel' | 'copy') => {
     if (studioMode === mode) return;
     setStudioMode(mode);
     // Reset current session when switching context
@@ -96,6 +103,12 @@ const App: React.FC = () => {
     setCarouselProductPreview(null);
     setCarouselProductBase64(null);
     setCarouselThemeColor(null);
+
+    // Reset Marketing Copy
+    setMarketingProduct('');
+    setMarketingContext('');
+    setMarketingAudience('');
+    setCopyResult(null);
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -168,16 +181,25 @@ const App: React.FC = () => {
     }
   };
 
+  const copyToClipboard = (text: string, sectionKey: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedSection(sectionKey);
+    setTimeout(() => setCopiedSection(null), 2000);
+  };
+
   const handleGenerate = async () => {
     
     // Check requirements based on mode
     if (studioMode === 'carousel') {
         if (!carouselModelBase64 || !carouselProductBase64 || !carouselThemeColor) return;
+    } else if (studioMode === 'copy') {
+        if (!marketingProduct || !marketingContext) return;
     } else {
         if (!file || !originalBase64) return;
     }
     
     setResults([]);
+    setCopyResult(null);
     setStatus(GenerationStatus.UPLOADING);
     
     try {
@@ -185,7 +207,14 @@ const App: React.FC = () => {
       
       let generatedImages: GeneratedImage[] = [];
 
-      if (studioMode === 'carousel') {
+      if (studioMode === 'copy') {
+          // Marketing Copy Workflow
+          const result = await generateMarketingCopy(marketingProduct, marketingContext, marketingAudience);
+          setCopyResult(result);
+          setStatus(GenerationStatus.COMPLETE);
+          return;
+      }
+      else if (studioMode === 'carousel') {
           // IG Carousel Workflow
           if (carouselModelFile && carouselProductFile && carouselModelBase64 && carouselProductBase64 && carouselThemeColor) {
               const modelMime = carouselModelFile.type === 'image/png' ? 'image/png' : 'image/jpeg';
@@ -365,6 +394,10 @@ const App: React.FC = () => {
     setCarouselProductBase64(null);
     resetSelection();
     setStatus(GenerationStatus.IDLE);
+    setMarketingProduct('');
+    setMarketingContext('');
+    setMarketingAudience('');
+    setCopyResult(null);
   }
 
   // --- Render Helpers ---
@@ -463,6 +496,27 @@ const App: React.FC = () => {
     </div>
   );
 
+  const renderCopySection = (title: string, content: string, sectionKey: string) => (
+      <div className="bg-white rounded-2xl p-6 shadow-md border border-warm-taupe/30 space-y-4">
+          <div className="flex justify-between items-center border-b border-warm-taupe/20 pb-3">
+              <h3 className="font-serif text-xl text-espresso flex items-center gap-2">
+                  <Megaphone className="w-5 h-5 text-dusty-rose" />
+                  {title}
+              </h3>
+              <button 
+                onClick={() => copyToClipboard(content, sectionKey)}
+                className="text-xs flex items-center gap-1 text-sage-green hover:text-espresso font-bold uppercase tracking-wide transition-colors"
+              >
+                  {copiedSection === sectionKey ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {copiedSection === sectionKey ? 'Copied' : 'Copy Text'}
+              </button>
+          </div>
+          <div className="text-sm text-espresso/80 leading-relaxed whitespace-pre-wrap font-sans">
+              {content}
+          </div>
+      </div>
+  );
+
   return (
     <div className="min-h-screen bg-alabaster text-espresso font-sans selection:bg-dusty-rose selection:text-white pb-20 relative">
       
@@ -533,201 +587,254 @@ const App: React.FC = () => {
                         <LayoutTemplate className="w-4 h-4" />
                         IG Carousel Maker
                     </button>
+                    <button
+                        onClick={() => switchStudioMode('copy')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap ${studioMode === 'copy' ? 'bg-[#9370DB] text-white shadow-md' : 'text-cool-slate hover:bg-warm-taupe/20'}`}
+                    >
+                        <Megaphone className="w-4 h-4" />
+                        Marketing AI
+                    </button>
                 </div>
             </div>
 
             {/* Hero / Intro */}
             <div className="text-center mb-12 max-w-2xl mx-auto space-y-4">
               <h2 className="font-serif text-4xl md:text-5xl text-espresso mb-2">
-                {studioMode === 'model' ? 'Soft Life Visualization' : (studioMode === 'carousel' ? 'Instagram Carousel Suite' : 'Luxury Product Studio')}
+                {studioMode === 'model' ? 'Soft Life Visualization' : (studioMode === 'carousel' ? 'Instagram Carousel Suite' : (studioMode === 'copy' ? 'Marketing Command Center' : 'Luxury Product Studio'))}
               </h2>
               <p className="text-cool-slate text-lg font-light">
                 {studioMode === 'model' 
                     ? "Upload your portrait and customize your aesthetic. We'll style you in the luxurious, self-care aesthetic you deserve."
                     : (studioMode === 'carousel' 
                         ? "Generate a complete 5-slide Instagram carousel. Cohesive, on-brand, and ready to post with zero editing."
-                        : "Generate high-end, commercial-grade product mockups. Perfect for Instagram campaigns and brand visuals.")
+                        : (studioMode === 'copy'
+                            ? "AI-Powered Social Media SEO & Copywriting. Trend research, hashtags, and persuasive scripts for the Farmasi US market."
+                            : "Generate high-end, commercial-grade product mockups. Perfect for Instagram campaigns and brand visuals.")
+                        )
                 }
               </p>
-              <ColorSwatch />
+              {studioMode !== 'copy' && <ColorSwatch />}
             </div>
 
             {/* Upload Section - Dynamic based on Mode */}
-            {results.length === 0 && (
+            {(results.length === 0 && !copyResult) && (
               <div className="max-w-2xl mx-auto space-y-8">
                 
-                {/* CAROUSEL MODE: DUAL UPLOAD */}
-                {studioMode === 'carousel' ? (
-                    <div className="space-y-6">
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Upload 1: Model */}
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold uppercase tracking-widest text-cool-slate ml-1">Step 1: The Model</label>
-                                <div 
-                                    className={`
-                                        relative border-2 border-dashed rounded-2xl p-6 text-center transition-all h-64 flex flex-col items-center justify-center
-                                        ${carouselModelPreview ? 'border-dusty-rose bg-white' : 'border-warm-taupe bg-oatmeal/20 hover:border-dusty-rose cursor-pointer'}
-                                    `}
-                                    onClick={() => !carouselModelPreview && carouselModelInputRef.current?.click()}
-                                >
-                                    <input 
-                                        type="file" 
-                                        ref={carouselModelInputRef}
-                                        onChange={handleCarouselModelChange} 
-                                        className="hidden" 
-                                        accept="image/png, image/jpeg, image/webp"
-                                    />
-                                    {carouselModelPreview ? (
-                                        <div className="relative w-full h-full">
-                                            <img src={carouselModelPreview} alt="Model" className="w-full h-full object-cover rounded-xl" />
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); setCarouselModelPreview(null); setCarouselModelFile(null); setCarouselModelBase64(null); }}
-                                                className="absolute -top-2 -right-2 bg-espresso text-white p-1.5 rounded-full hover:bg-red-500"
-                                            >
-                                                <X className="w-3 h-3" />
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div className="bg-white p-3 rounded-full mb-3"><Heart className="w-6 h-6 text-dusty-rose" /></div>
-                                            <p className="text-sm font-bold text-espresso">Upload Model</p>
-                                        </>
-                                    )}
-                                </div>
+                {/* MODE: MARKETING COPY */}
+                {studioMode === 'copy' ? (
+                     <div className="bg-white rounded-2xl p-8 shadow-md border border-warm-taupe/30 space-y-6">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-bold uppercase tracking-widest text-cool-slate mb-2 block">Product Name / Campaign Bundle</label>
+                                <input 
+                                    type="text"
+                                    value={marketingProduct}
+                                    onChange={(e) => setMarketingProduct(e.target.value)}
+                                    placeholder="e.g. Dr. C. Tuna Resurface Bundle or Nutriplus Collagen"
+                                    className="w-full bg-alabaster/50 border border-warm-taupe/50 rounded-xl p-4 text-base text-espresso placeholder:text-cool-slate/50 focus:outline-none focus:border-[#9370DB] focus:ring-1 focus:ring-[#9370DB]/50 transition-all"
+                                />
+                            </div>
+                            
+                            <div>
+                                <label className="text-xs font-bold uppercase tracking-widest text-cool-slate mb-2 block">Key Benefits / Context</label>
+                                <textarea
+                                    value={marketingContext}
+                                    onChange={(e) => setMarketingContext(e.target.value)}
+                                    placeholder="e.g. Anti-aging retinol alternative, vegan, good for sensitive skin. Launching this Friday with a 20% discount."
+                                    className="w-full bg-alabaster/50 border border-warm-taupe/50 rounded-xl p-4 text-base text-espresso placeholder:text-cool-slate/50 focus:outline-none focus:border-[#9370DB] focus:ring-1 focus:ring-[#9370DB]/50 transition-all resize-none h-32"
+                                />
                             </div>
 
-                            {/* Upload 2: Product */}
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold uppercase tracking-widest text-cool-slate ml-1">Step 2: The Product</label>
-                                <div 
-                                    className={`
-                                        relative border-2 border-dashed rounded-2xl p-6 text-center transition-all h-64 flex flex-col items-center justify-center
-                                        ${carouselProductPreview ? 'border-sage-green bg-white' : 'border-warm-taupe bg-oatmeal/20 hover:border-sage-green cursor-pointer'}
-                                    `}
-                                    onClick={() => !carouselProductPreview && carouselProductInputRef.current?.click()}
-                                >
-                                    <input 
-                                        type="file" 
-                                        ref={carouselProductInputRef}
-                                        onChange={handleCarouselProductChange} 
-                                        className="hidden" 
-                                        accept="image/png, image/jpeg, image/webp"
-                                    />
-                                    {carouselProductPreview ? (
-                                        <div className="relative w-full h-full">
-                                            <img src={carouselProductPreview} alt="Product" className="w-full h-full object-cover rounded-xl" />
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); setCarouselProductPreview(null); setCarouselProductFile(null); setCarouselProductBase64(null); }}
-                                                className="absolute -top-2 -right-2 bg-espresso text-white p-1.5 rounded-full hover:bg-red-500"
-                                            >
-                                                <X className="w-3 h-3" />
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div className="bg-white p-3 rounded-full mb-3"><Tag className="w-6 h-6 text-sage-green" /></div>
-                                            <p className="text-sm font-bold text-espresso">Upload Product</p>
-                                        </>
-                                    )}
-                                </div>
+                            <div>
+                                <label className="text-xs font-bold uppercase tracking-widest text-cool-slate mb-2 block">Target Audience (Optional)</label>
+                                <input 
+                                    type="text"
+                                    value={marketingAudience}
+                                    onChange={(e) => setMarketingAudience(e.target.value)}
+                                    placeholder="e.g. Busy moms in their 30s who want glowy skin without downtime"
+                                    className="w-full bg-alabaster/50 border border-warm-taupe/50 rounded-xl p-4 text-base text-espresso placeholder:text-cool-slate/50 focus:outline-none focus:border-[#9370DB] focus:ring-1 focus:ring-[#9370DB]/50 transition-all"
+                                />
+                                <p className="text-[10px] text-cool-slate mt-2 ml-1">
+                                    *AI will automatically research Farmasi US demographics if left blank.
+                                </p>
                             </div>
-                         </div>
-                         
-                         {/* Step 3: Theme Color Selection */}
-                         {(carouselModelPreview && carouselProductPreview) && (
-                             <div className="bg-white rounded-2xl p-6 shadow-sm border border-warm-taupe/30 animate-in fade-in slide-in-from-bottom-5">
-                                 <div className="flex items-center gap-2 mb-4 pb-2 border-b border-warm-taupe/20">
-                                     <Palette className="w-4 h-4 text-espresso" />
-                                     <h3 className="font-bold text-sm text-espresso uppercase tracking-widest">Step 3: Select Main Theme Color</h3>
-                                 </div>
-                                 <div className="flex flex-wrap gap-4 justify-center">
-                                     {COLORS.map((color) => (
-                                         <button
-                                            key={color.hex}
-                                            onClick={() => setCarouselThemeColor(color.hex)}
-                                            className={`
-                                                group relative w-12 h-12 rounded-full border-2 transition-all duration-300
-                                                ${carouselThemeColor === color.hex ? 'scale-110 ring-2 ring-offset-2 ring-espresso border-white' : 'border-transparent hover:scale-105'}
-                                            `}
-                                            style={{ backgroundColor: color.hex }}
-                                            title={color.name}
-                                         >
-                                             {carouselThemeColor === color.hex && (
-                                                 <div className="absolute inset-0 flex items-center justify-center">
-                                                     <div className="w-2 h-2 bg-white rounded-full"></div>
-                                                 </div>
-                                             )}
-                                         </button>
-                                     ))}
-                                 </div>
-                                 <p className="text-center text-xs text-cool-slate mt-4">
-                                     {carouselThemeColor 
-                                        ? `Selected: ${COLORS.find(c => c.hex === carouselThemeColor)?.name}` 
-                                        : "Please select a brand color to unify the carousel."}
-                                 </p>
-                             </div>
-                         )}
-                    </div>
+                        </div>
+                     </div>
                 ) : (
-                    // STANDARD SINGLE UPLOAD MODE
-                    <div 
-                    className={`
-                        relative group border-2 border-dashed rounded-[2rem] p-12 text-center transition-all duration-300
-                        ${previewUrl ? (studioMode === 'product' ? 'border-sage-green bg-white' : 'border-dusty-rose bg-white') : 'border-warm-taupe bg-oatmeal/20 hover:bg-oatmeal/40 hover:border-sage-green'}
-                    `}
-                    onDragOver={handleDragOver}
-                    onDrop={handleDrop}
-                    >
-                    <input 
-                        type="file" 
-                        ref={fileInputRef}
-                        onChange={handleFileChange} 
-                        className="hidden" 
-                        accept="image/png, image/jpeg, image/webp"
-                    />
-                    
-                    {previewUrl ? (
-                        <div className="relative">
-                        <img 
-                            src={previewUrl} 
-                            alt="Preview" 
-                            className="w-48 h-64 object-cover rounded-xl mx-auto shadow-xl border-4 border-white"
-                        />
-                        <button 
-                            onClick={() => {
-                                setFile(null);
-                                setPreviewUrl(null);
-                                setResults([]);
-                                setOriginalBase64(null);
-                            }}
-                            className="absolute -top-3 -right-3 bg-espresso text-white p-2 rounded-full hover:bg-red-500 transition-colors"
-                        >
-                            <RefreshCw className="w-4 h-4" />
-                        </button>
+                    // ... (Other modes upload UI preserved) ...
+                    studioMode === 'carousel' ? (
+                        <div className="space-y-6">
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Upload 1: Model */}
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold uppercase tracking-widest text-cool-slate ml-1">Step 1: The Model</label>
+                                    <div 
+                                        className={`
+                                            relative border-2 border-dashed rounded-2xl p-6 text-center transition-all h-64 flex flex-col items-center justify-center
+                                            ${carouselModelPreview ? 'border-dusty-rose bg-white' : 'border-warm-taupe bg-oatmeal/20 hover:border-dusty-rose cursor-pointer'}
+                                        `}
+                                        onClick={() => !carouselModelPreview && carouselModelInputRef.current?.click()}
+                                    >
+                                        <input 
+                                            type="file" 
+                                            ref={carouselModelInputRef}
+                                            onChange={handleCarouselModelChange} 
+                                            className="hidden" 
+                                            accept="image/png, image/jpeg, image/webp"
+                                        />
+                                        {carouselModelPreview ? (
+                                            <div className="relative w-full h-full">
+                                                <img src={carouselModelPreview} alt="Model" className="w-full h-full object-cover rounded-xl" />
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); setCarouselModelPreview(null); setCarouselModelFile(null); setCarouselModelBase64(null); }}
+                                                    className="absolute -top-2 -right-2 bg-espresso text-white p-1.5 rounded-full hover:bg-red-500"
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="bg-white p-3 rounded-full mb-3"><Heart className="w-6 h-6 text-dusty-rose" /></div>
+                                                <p className="text-sm font-bold text-espresso">Upload Model</p>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+    
+                                {/* Upload 2: Product */}
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold uppercase tracking-widest text-cool-slate ml-1">Step 2: The Product</label>
+                                    <div 
+                                        className={`
+                                            relative border-2 border-dashed rounded-2xl p-6 text-center transition-all h-64 flex flex-col items-center justify-center
+                                            ${carouselProductPreview ? 'border-sage-green bg-white' : 'border-warm-taupe bg-oatmeal/20 hover:border-sage-green cursor-pointer'}
+                                        `}
+                                        onClick={() => !carouselProductPreview && carouselProductInputRef.current?.click()}
+                                    >
+                                        <input 
+                                            type="file" 
+                                            ref={carouselProductInputRef}
+                                            onChange={handleCarouselProductChange} 
+                                            className="hidden" 
+                                            accept="image/png, image/jpeg, image/webp"
+                                        />
+                                        {carouselProductPreview ? (
+                                            <div className="relative w-full h-full">
+                                                <img src={carouselProductPreview} alt="Product" className="w-full h-full object-cover rounded-xl" />
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); setCarouselProductPreview(null); setCarouselProductFile(null); setCarouselProductBase64(null); }}
+                                                    className="absolute -top-2 -right-2 bg-espresso text-white p-1.5 rounded-full hover:bg-red-500"
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="bg-white p-3 rounded-full mb-3"><Tag className="w-6 h-6 text-sage-green" /></div>
+                                                <p className="text-sm font-bold text-espresso">Upload Product</p>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                             </div>
+                             
+                             {/* Step 3: Theme Color Selection */}
+                             {(carouselModelPreview && carouselProductPreview) && (
+                                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-warm-taupe/30 animate-in fade-in slide-in-from-bottom-5">
+                                     <div className="flex items-center gap-2 mb-4 pb-2 border-b border-warm-taupe/20">
+                                         <Palette className="w-4 h-4 text-espresso" />
+                                         <h3 className="font-bold text-sm text-espresso uppercase tracking-widest">Step 3: Select Main Theme Color</h3>
+                                     </div>
+                                     <div className="flex flex-wrap gap-4 justify-center">
+                                         {COLORS.map((color) => (
+                                             <button
+                                                key={color.hex}
+                                                onClick={() => setCarouselThemeColor(color.hex)}
+                                                className={`
+                                                    group relative w-12 h-12 rounded-full border-2 transition-all duration-300
+                                                    ${carouselThemeColor === color.hex ? 'scale-110 ring-2 ring-offset-2 ring-espresso border-white' : 'border-transparent hover:scale-105'}
+                                                `}
+                                                style={{ backgroundColor: color.hex }}
+                                                title={color.name}
+                                             >
+                                                 {carouselThemeColor === color.hex && (
+                                                     <div className="absolute inset-0 flex items-center justify-center">
+                                                         <div className="w-2 h-2 bg-white rounded-full"></div>
+                                                     </div>
+                                                 )}
+                                             </button>
+                                         ))}
+                                     </div>
+                                     <p className="text-center text-xs text-cool-slate mt-4">
+                                         {carouselThemeColor 
+                                            ? `Selected: ${COLORS.find(c => c.hex === carouselThemeColor)?.name}` 
+                                            : "Please select a brand color to unify the carousel."}
+                                     </p>
+                                 </div>
+                             )}
                         </div>
                     ) : (
+                        // STANDARD SINGLE UPLOAD MODE
                         <div 
-                            className="cursor-pointer space-y-4"
-                            onClick={() => fileInputRef.current?.click()}
+                        className={`
+                            relative group border-2 border-dashed rounded-[2rem] p-12 text-center transition-all duration-300
+                            ${previewUrl ? (studioMode === 'product' ? 'border-sage-green bg-white' : 'border-dusty-rose bg-white') : 'border-warm-taupe bg-oatmeal/20 hover:bg-oatmeal/40 hover:border-sage-green'}
+                        `}
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
                         >
-                        <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto shadow-md group-hover:scale-110 transition-transform">
-                            {studioMode === 'model' ? <Camera className="w-10 h-10 text-dusty-rose" /> : <ShoppingBag className="w-10 h-10 text-sage-green" />}
+                        <input 
+                            type="file" 
+                            ref={fileInputRef}
+                            onChange={handleFileChange} 
+                            className="hidden" 
+                            accept="image/png, image/jpeg, image/webp"
+                        />
+                        
+                        {previewUrl ? (
+                            <div className="relative">
+                            <img 
+                                src={previewUrl} 
+                                alt="Preview" 
+                                className="w-48 h-64 object-cover rounded-xl mx-auto shadow-xl border-4 border-white"
+                            />
+                            <button 
+                                onClick={() => {
+                                    setFile(null);
+                                    setPreviewUrl(null);
+                                    setResults([]);
+                                    setOriginalBase64(null);
+                                }}
+                                className="absolute -top-3 -right-3 bg-espresso text-white p-2 rounded-full hover:bg-red-500 transition-colors"
+                            >
+                                <RefreshCw className="w-4 h-4" />
+                            </button>
+                            </div>
+                        ) : (
+                            <div 
+                                className="cursor-pointer space-y-4"
+                                onClick={() => fileInputRef.current?.click()}
+                            >
+                            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto shadow-md group-hover:scale-110 transition-transform">
+                                {studioMode === 'model' ? <Camera className="w-10 h-10 text-dusty-rose" /> : <ShoppingBag className="w-10 h-10 text-sage-green" />}
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-serif text-espresso">
+                                    {studioMode === 'model' ? 'Upload Portrait' : 'Upload Product'}
+                                </h3>
+                                <p className="text-sm text-cool-slate mt-1">Drag & drop or click to browse</p>
+                            </div>
+                            </div>
+                        )}
                         </div>
-                        <div>
-                            <h3 className="text-xl font-serif text-espresso">
-                                {studioMode === 'model' ? 'Upload Portrait' : 'Upload Product'}
-                            </h3>
-                            <p className="text-sm text-cool-slate mt-1">Drag & drop or click to browse</p>
-                        </div>
-                        </div>
-                    )}
-                    </div>
+                    )
                 )}
 
 
                 {/* Customization Controls (Only for Standard Modes) */}
-                {studioMode !== 'carousel' && file && (
+                {(studioMode !== 'carousel' && studioMode !== 'copy' && file) && (
                   <div className="bg-white rounded-2xl p-6 shadow-sm border border-warm-taupe/30 space-y-6 animate-in fade-in slide-in-from-bottom-5 duration-500">
+                    {/* ... (Existing customization code) ... */}
                     <div className="flex items-center justify-between border-b border-warm-taupe/20 pb-4">
                       <h3 className="font-serif text-lg text-espresso flex items-center gap-2">
                         <Palette className="w-4 h-4 text-dusty-rose" />
@@ -849,25 +956,32 @@ const App: React.FC = () => {
                 <div className="flex justify-center pt-4">
                   {status === GenerationStatus.GENERATING || status === GenerationStatus.UPLOADING ? (
                     <div className="flex flex-col items-center space-y-4">
-                        <div className={`w-16 h-16 border-4 border-oatmeal rounded-full animate-spin ${studioMode === 'product' ? 'border-t-sage-green' : (studioMode === 'carousel' ? 'border-t-espresso' : 'border-t-dusty-rose')}`}></div>
+                        <div className={`w-16 h-16 border-4 border-oatmeal rounded-full animate-spin ${studioMode === 'product' ? 'border-t-sage-green' : (studioMode === 'carousel' ? 'border-t-espresso' : (studioMode === 'copy' ? 'border-t-[#9370DB]' : 'border-t-dusty-rose'))}`}></div>
                         <p className="font-serif italic text-sage-green animate-pulse">
                             {studioMode === 'carousel' 
                                 ? 'Curating Instagram feed...' 
-                                : (generationType === 'directors' ? 'Filming director\'s cut...' : `Curating your ${studioMode} aesthetic...`)
+                                : (studioMode === 'copy'
+                                    ? 'Researching trends & writing copy...'
+                                    : (generationType === 'directors' ? 'Filming director\'s cut...' : `Curating your ${studioMode} aesthetic...`)
+                                )
                             }
                         </p>
                     </div>
                   ) : (
                     <Button 
                         onClick={handleGenerate} 
-                        disabled={studioMode === 'carousel' ? (!carouselModelFile || !carouselProductFile || !carouselThemeColor) : (!file)}
-                        className={`w-full md:w-auto min-w-[200px] ${studioMode === 'product' ? 'bg-sage-green hover:bg-[#5d6854]' : (studioMode === 'carousel' ? 'bg-espresso hover:bg-black' : '')}`}
+                        disabled={studioMode === 'carousel' ? (!carouselModelFile || !carouselProductFile || !carouselThemeColor) : (studioMode === 'copy' ? (!marketingProduct || !marketingContext) : (!file))}
+                        className={`w-full md:w-auto min-w-[200px] ${studioMode === 'product' ? 'bg-sage-green hover:bg-[#5d6854]' : (studioMode === 'carousel' ? 'bg-espresso hover:bg-black' : (studioMode === 'copy' ? 'bg-[#9370DB] hover:bg-[#7B68EE]' : ''))}`}
                     >
                         {status === GenerationStatus.ERROR 
                             ? 'Try Again' 
                             : (studioMode === 'carousel' 
                                 ? 'Generate IG Carousel' 
-                                : (generationType === 'directors' ? 'Generate Director\'s Cut' : 'Generate Styles'))
+                                : (studioMode === 'copy' 
+                                    ? 'Generate Marketing Assets'
+                                    : (generationType === 'directors' ? 'Generate Director\'s Cut' : 'Generate Styles')
+                                  )
+                              )
                         }
                     </Button>
                   )}
@@ -881,8 +995,37 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {/* Results Gallery (Current Session) */}
-            {results.length > 0 && (
+            {/* Results Display */}
+            {copyResult && studioMode === 'copy' && (
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-10 duration-700 pb-12">
+                     <div className="flex flex-col md:flex-row justify-between items-end border-b border-warm-taupe pb-4 gap-4">
+                        <div>
+                            <h3 className="font-serif text-3xl text-espresso">Marketing Campaign</h3>
+                            <p className="text-sage-green font-light italic">
+                                Trend-researched, SEO-optimized, and ready to post.
+                            </p>
+                        </div>
+                        <div className="flex gap-3">
+                            <Button onClick={handleGenerate} className="text-sm py-2 px-6">
+                            <RefreshCw className="w-4 h-4 mr-2 inline" />
+                            Regenerate
+                            </Button>
+                            <Button variant="outline" onClick={startNewSession} className="text-sm py-2 px-6">
+                            New Session
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-6">
+                        {renderCopySection("Email Marketing Strategy", copyResult.emailContent, 'email')}
+                        {renderCopySection("Social Media (TikTok/IG/Reels)", copyResult.socialContent, 'social')}
+                        {renderCopySection("High-Conversion Sales Page", copyResult.salesPageContent, 'sales')}
+                    </div>
+                </div>
+            )}
+
+            {/* Image Results Gallery (Current Session) */}
+            {(results.length > 0 && studioMode !== 'copy') && (
               <div className="space-y-12 animate-in fade-in slide-in-from-bottom-10 duration-700">
                 <div className="flex flex-col md:flex-row justify-between items-end border-b border-warm-taupe pb-4 gap-4">
                   <div>

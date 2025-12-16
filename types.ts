@@ -15,6 +15,15 @@ export interface GeneratedImage {
   category: 'avatar' | 'product' | 'carousel';
 }
 
+export interface GeneratedCopy {
+  id: string;
+  timestamp: number;
+  productName: string;
+  emailContent: string;
+  socialContent: string;
+  salesPageContent: string;
+}
+
 export interface Scenario {
   id: string;
   title: string;

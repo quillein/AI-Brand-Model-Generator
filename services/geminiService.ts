@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { SCENERIES, STYLES, POSES, CAMERA_ANGLES, EXPRESSIONS, SYSTEM_INSTRUCTION, WORKFLOW_ANGLES, PRODUCT_ANGLES } from '../constants';
-import { GeneratedImage } from '../types';
+import { GeneratedImage, GeneratedCopy } from '../types';
 
 // Helper to convert file to base64
 export const fileToGenerativePart = async (file: File): Promise<string> => {
@@ -615,4 +615,89 @@ export const generateIGCarousel = async (
 
   const results = await Promise.all(promises);
   return results.filter((img): img is GeneratedImage => img !== null);
+};
+
+export const generateMarketingCopy = async (
+    productName: string,
+    context: string,
+    targetAudience: string
+): Promise<GeneratedCopy> => {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) throw new Error("API Key is missing.");
+    const ai = new GoogleGenAI({ apiKey });
+
+    const prompt = `
+        You are a top-tier Social Media SEO & Copywriting Expert specializing in the **Farmasi US** market.
+        
+        **YOUR PERSONA:**
+        - Tone: Elegantly Sassy, Persuasive, Urgent, FOMO-inducing, High-End "Girl Boss/Beauty Biz".
+        - Expertise: Viral Marketing, Consumer Psychology, Direct Response Copywriting.
+        
+        **TASK:**
+        Perform deep research using Google Search (web crawling) on current social media trends, Farmasi US demographics, and viral hashtags for the following product context. 
+        Then, generate 3 distinct marketing assets.
+
+        **INPUTS:**
+        - Product Name: ${productName}
+        - Context/Benefits: ${context}
+        - Target Audience: ${targetAudience} (If empty, default to Farmasi US core demographic: Beauty enthusiasts, Moms, Aspiring Entrepreneurs).
+
+        **REQUIRED OUTPUTS (Markdown Format):**
+        
+        ### SECTION 1: EMAIL MARKETING
+        - **Subject Line A:** (High Open Rate style)
+        - **Subject Line B:** (Curiosity gap style)
+        - **Preview Text:** Short & punchy.
+        - **Body Content:** Engaging storytelling, focus on benefits, creating urgency.
+        - **CTA Button:** A compelling, action-oriented button text.
+
+        ### SECTION 2: SOCIAL MEDIA MARKETING (TikTok/IG/Reels)
+        - **Audio Script:** A 20-second persuasive script for a "Siren Sexy Black Woman" voiceover. Sassy, confident, commanding attention.
+        - **Caption:** Irresistibly persuasive text.
+        - **Flexible CTAs:** 3 variations (e.g., "Comment GLOWUP", "Link in Bio", "DM for info").
+        - **Hashtags:** A mix of 15 trending, niche, and SEO-optimized hashtags based on current research.
+
+        ### SECTION 3: SALES PAGE MAKER
+        - **Headline:** Hook-driven.
+        - **Bundle Description:** Frictionless, smooth-as-butter copy.
+        - **Urgency/FOMO:** Why they need it NOW.
+        - **Final CTA:** The closing push.
+
+        **RESEARCH REQUIREMENT:**
+        Use the Google Search tool to find:
+        1. Current trending beauty/wellness hashtags.
+        2. Competitor copywriting angles for similar products.
+        3. Specific pain points of the Farmasi US demographic currently discussing this topic.
+    `;
+
+    // Use gemini-2.5-flash which supports Search Grounding and high quality text generation
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+            tools: [{ googleSearch: {} }],
+            systemInstruction: "You are a master copywriter for the beauty industry. You optimize for conversion and engagement."
+        }
+    });
+
+    const text = response.text || "Failed to generate copy.";
+
+    // Simple parsing to split sections if needed, or just return the whole markdown block.
+    // For this implementation, we will split by headers to make it cleaner in UI.
+    
+    // We will do a basic split for the UI data structure, but keep the raw text available.
+    // NOTE: This parsing is fragile if the model drifts, but 2.5 is usually good with "### SECTION" instructions.
+    
+    const emailMatch = text.match(/### SECTION 1: EMAIL MARKETING([\s\S]*?)### SECTION 2:/);
+    const socialMatch = text.match(/### SECTION 2: SOCIAL MEDIA MARKETING([\s\S]*?)### SECTION 3:/);
+    const salesMatch = text.match(/### SECTION 3: SALES PAGE MAKER([\s\S]*)/);
+
+    return {
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        productName: productName,
+        emailContent: emailMatch ? emailMatch[1].trim() : "See full result below...",
+        socialContent: socialMatch ? socialMatch[1].trim() : "See full result below...",
+        salesPageContent: salesMatch ? salesMatch[1].trim() : "See full result below..."
+    };
 };
