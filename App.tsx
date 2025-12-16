@@ -1,19 +1,33 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, Download, RefreshCw, Camera, Heart, Palette, MessageSquare, LayoutGrid, Trash2, History, Video, ShoppingBag, Plus, Tag, Clapperboard, Maximize2, X } from 'lucide-react';
-import { generateAvatarVariations, generateAngleVariations, generateProductMockup, fileToGenerativePart, generateProductVariations, generateDirectorsCut } from './services/geminiService';
+import { Sparkles, Download, RefreshCw, Camera, Heart, Palette, MessageSquare, LayoutGrid, Trash2, History, Video, ShoppingBag, Plus, Tag, Clapperboard, Maximize2, X, LayoutTemplate, Layers } from 'lucide-react';
+import { generateAvatarVariations, generateAngleVariations, generateProductMockup, fileToGenerativePart, generateProductVariations, generateDirectorsCut, generateIGCarousel } from './services/geminiService';
 import { GeneratedImage, GenerationStatus } from './types';
 import { Button } from './components/Button';
 import { ColorSwatch } from './components/ColorSwatch';
-import { SCENERIES, STYLES } from './constants';
+import { SCENERIES, STYLES, COLORS } from './constants';
+import { saveImagesToDB, getImagesFromDB, deleteImageFromDB, clearDB } from './services/db';
 
 const App: React.FC = () => {
   const [view, setView] = useState<'studio' | 'gallery'>('studio');
-  const [studioMode, setStudioMode] = useState<'model' | 'product'>('model');
+  const [studioMode, setStudioMode] = useState<'model' | 'product' | 'carousel'>('model');
   const [generationType, setGenerationType] = useState<'creative' | 'directors'>('creative');
   
+  // Single Upload State (Model / Product modes)
   const [file, setFile] = useState<File | null>(null);
   const [originalBase64, setOriginalBase64] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  // Carousel Upload State (Dual Upload)
+  const [carouselModelFile, setCarouselModelFile] = useState<File | null>(null);
+  const [carouselModelPreview, setCarouselModelPreview] = useState<string | null>(null);
+  const [carouselModelBase64, setCarouselModelBase64] = useState<string | null>(null);
+
+  const [carouselProductFile, setCarouselProductFile] = useState<File | null>(null);
+  const [carouselProductPreview, setCarouselProductPreview] = useState<string | null>(null);
+  const [carouselProductBase64, setCarouselProductBase64] = useState<string | null>(null);
+
+  const [carouselThemeColor, setCarouselThemeColor] = useState<string | null>(null); // Hex code
+
   const [status, setStatus] = useState<GenerationStatus>(GenerationStatus.IDLE);
   const [results, setResults] = useState<GeneratedImage[]>([]);
   const [history, setHistory] = useState<GeneratedImage[]>([]);
@@ -30,36 +44,39 @@ const App: React.FC = () => {
   const [lightboxImage, setLightboxImage] = useState<GeneratedImage | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const carouselModelInputRef = useRef<HTMLInputElement>(null);
+  const carouselProductInputRef = useRef<HTMLInputElement>(null);
 
-  // Load history from sessionStorage on mount (Session only)
+  // Load history from IndexedDB on mount
   useEffect(() => {
-    const savedSession = sessionStorage.getItem('luxe_aura_session');
-    if (savedSession) {
+    const loadHistory = async () => {
       try {
-        setHistory(JSON.parse(savedSession));
+        const savedImages = await getImagesFromDB();
+        setHistory(savedImages);
       } catch (e) {
-        console.error("Failed to parse history", e);
+        console.error("Failed to load history from DB", e);
       }
-    }
+    };
+    loadHistory();
   }, []);
 
-  // Save history to sessionStorage whenever it changes
-  useEffect(() => {
+  // Update history wrapper to sync with DB
+  const addToHistory = async (newImages: GeneratedImage[]) => {
     try {
-      sessionStorage.setItem('luxe_aura_session', JSON.stringify(history));
+      // Save to DB (which handles cleanup limit)
+      await saveImagesToDB(newImages);
+      
+      // Reload from DB to ensure UI is in sync with the cleanup logic
+      const savedImages = await getImagesFromDB();
+      setHistory(savedImages);
     } catch (e) {
-      console.warn("Session Storage quota exceeded.", e);
+      console.error("Failed to save to DB", e);
+      // Fallback update local state if DB fails
+      setHistory(prev => [...newImages, ...prev]);
     }
-  }, [history]);
-
-  const updateHistory = (newImages: GeneratedImage[]) => {
-    setHistory(prev => {
-        const updated = [...newImages, ...prev];
-        return updated.slice(0, 20); // Limit to 20 most recent images
-    });
   };
 
-  const switchStudioMode = (mode: 'model' | 'product') => {
+  const switchStudioMode = (mode: 'model' | 'product' | 'carousel') => {
     if (studioMode === mode) return;
     setStudioMode(mode);
     // Reset current session when switching context
@@ -70,6 +87,15 @@ const App: React.FC = () => {
     resetSelection();
     setGenerationType('creative');
     setStatus(GenerationStatus.IDLE);
+    
+    // Reset Carousel specific state
+    setCarouselModelFile(null);
+    setCarouselModelPreview(null);
+    setCarouselModelBase64(null);
+    setCarouselProductFile(null);
+    setCarouselProductPreview(null);
+    setCarouselProductBase64(null);
+    setCarouselThemeColor(null);
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -91,6 +117,32 @@ const App: React.FC = () => {
       setView('studio');
     }
   };
+
+  // Carousel Handlers
+  const handleCarouselModelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const f = e.target.files[0];
+      setCarouselModelFile(f);
+      setCarouselModelPreview(URL.createObjectURL(f));
+      try {
+        const base64 = await fileToGenerativePart(f);
+        setCarouselModelBase64(base64);
+      } catch(e) { console.error(e); }
+    }
+  };
+
+  const handleCarouselProductChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const f = e.target.files[0];
+      setCarouselProductFile(f);
+      setCarouselProductPreview(URL.createObjectURL(f));
+      try {
+        const base64 = await fileToGenerativePart(f);
+        setCarouselProductBase64(base64);
+      } catch(e) { console.error(e); }
+    }
+  };
+
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -117,39 +169,66 @@ const App: React.FC = () => {
   };
 
   const handleGenerate = async () => {
-    if (!file || !originalBase64) return;
+    
+    // Check requirements based on mode
+    if (studioMode === 'carousel') {
+        if (!carouselModelBase64 || !carouselProductBase64 || !carouselThemeColor) return;
+    } else {
+        if (!file || !originalBase64) return;
+    }
     
     setResults([]);
     setStatus(GenerationStatus.UPLOADING);
     
     try {
       setStatus(GenerationStatus.GENERATING);
-      const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
       
       let generatedImages: GeneratedImage[] = [];
 
-      if (generationType === 'directors') {
-        // Director's Cut: Strict angle variations of original upload
-        generatedImages = await generateDirectorsCut(originalBase64, mimeType, studioMode);
+      if (studioMode === 'carousel') {
+          // IG Carousel Workflow
+          if (carouselModelFile && carouselProductFile && carouselModelBase64 && carouselProductBase64 && carouselThemeColor) {
+              const modelMime = carouselModelFile.type === 'image/png' ? 'image/png' : 'image/jpeg';
+              const productMime = carouselProductFile.type === 'image/png' ? 'image/png' : 'image/jpeg';
+              
+              const selectedColorObj = COLORS.find(c => c.hex === carouselThemeColor);
+              const colorName = selectedColorObj ? selectedColorObj.name : 'Luxury Brand Color';
+
+              generatedImages = await generateIGCarousel(
+                  carouselModelBase64, modelMime,
+                  carouselProductBase64, productMime,
+                  carouselThemeColor, colorName
+              );
+          }
       } else {
-        // Creative Mode: Style/Scenery variations
-        if (studioMode === 'model') {
-            generatedImages = await generateAvatarVariations(originalBase64, mimeType, {
-                sceneryId: selectedScenery,
-                styleId: selectedStyle,
-                customPrompt: customPrompt.trim() !== '' ? customPrompt : undefined
-            });
-        } else {
-            generatedImages = await generateProductVariations(originalBase64, mimeType, {
-                sceneryId: selectedScenery,
-                styleId: selectedStyle,
-                customPrompt: customPrompt.trim() !== '' ? customPrompt : undefined
-            });
-        }
+          // Standard Single Image Workflows
+          if (file && originalBase64) {
+            const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+            
+            if (generationType === 'directors') {
+                // Director's Cut
+                generatedImages = await generateDirectorsCut(originalBase64, mimeType, studioMode === 'model' ? 'avatar' : 'product');
+            } else {
+                // Creative Mode
+                if (studioMode === 'model') {
+                    generatedImages = await generateAvatarVariations(originalBase64, mimeType, {
+                        sceneryId: selectedScenery,
+                        styleId: selectedStyle,
+                        customPrompt: customPrompt.trim() !== '' ? customPrompt : undefined
+                    });
+                } else {
+                    generatedImages = await generateProductVariations(originalBase64, mimeType, {
+                        sceneryId: selectedScenery,
+                        styleId: selectedStyle,
+                        customPrompt: customPrompt.trim() !== '' ? customPrompt : undefined
+                    });
+                }
+            }
+          }
       }
       
       setResults(generatedImages);
-      updateHistory(generatedImages);
+      await addToHistory(generatedImages);
       setStatus(GenerationStatus.COMPLETE);
     } catch (error) {
       console.error(error);
@@ -174,10 +253,10 @@ const App: React.FC = () => {
         );
         
         // Add to history and update current view slightly to show something happened
-        updateHistory(angleVariations);
         if (view === 'studio') {
              setResults(prev => [...angleVariations, ...prev]);
         }
+        await addToHistory(angleVariations);
         alert("Director's Cut complete! 4 new variations added to your collection.");
     } catch (e) {
         console.error(e);
@@ -212,10 +291,10 @@ const App: React.FC = () => {
                 selectedImageForProduct.scenario
             );
 
-            updateHistory(mockupResults);
             if (view === 'studio') {
                 setResults(prev => [...mockupResults, ...prev]);
             }
+            await addToHistory(mockupResults);
             alert("Product Mockup generated successfully!");
         } catch (error) {
             console.error(error);
@@ -237,23 +316,32 @@ const App: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    // Remove from history
+    
+    // Optimistic Update
     setHistory(prev => prev.filter(item => item.id !== id));
-    // Remove from current results if present
     setResults(prev => prev.filter(item => item.id !== id));
     
-    // If it was open in lightbox, close it
     if (lightboxImage?.id === id) {
         setLightboxImage(null);
     }
+
+    try {
+      await deleteImageFromDB(id);
+    } catch (e) {
+      console.error("Failed to delete from DB", e);
+    }
   };
 
-  const clearHistory = () => {
+  const clearHistory = async () => {
     if (window.confirm("Are you sure you want to clear your entire collection?")) {
       setHistory([]);
-      sessionStorage.removeItem('luxe_aura_session');
+      try {
+        await clearDB();
+      } catch (e) {
+        console.error("Failed to clear DB", e);
+      }
     }
   };
 
@@ -261,6 +349,7 @@ const App: React.FC = () => {
     setSelectedScenery(undefined);
     setSelectedStyle(undefined);
     setCustomPrompt('');
+    setCarouselThemeColor(null);
   };
 
   const startNewSession = () => {
@@ -268,15 +357,19 @@ const App: React.FC = () => {
     setFile(null);
     setOriginalBase64(null);
     setPreviewUrl(null);
+    setCarouselModelFile(null);
+    setCarouselModelPreview(null);
+    setCarouselModelBase64(null);
+    setCarouselProductFile(null);
+    setCarouselProductPreview(null);
+    setCarouselProductBase64(null);
     resetSelection();
     setStatus(GenerationStatus.IDLE);
-    sessionStorage.removeItem('luxe_aura_session');
-    setHistory([]);
   }
 
   // --- Render Helpers ---
   const renderImageCard = (img: GeneratedImage) => (
-    <div key={img.id} className="group relative flex flex-col space-y-3">
+    <div key={img.id} className="group relative flex flex-col space-y-3 animate-in fade-in duration-500">
         <div 
             className="relative overflow-hidden rounded-2xl shadow-xl bg-warm-taupe aspect-[3/4] cursor-pointer"
             onClick={() => setLightboxImage(img)}
@@ -315,8 +408,8 @@ const App: React.FC = () => {
             <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end z-20">
                 <div className="flex justify-between items-end">
                    {/* Tag */}
-                   <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold mb-1 inline-block ${img.category === 'product' ? 'bg-sage-green text-white' : 'bg-espresso text-white'}`}>
-                      {img.category === 'product' ? 'Product' : 'Model'}
+                   <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold mb-1 inline-block ${img.category === 'product' ? 'bg-sage-green text-white' : (img.category === 'carousel' ? 'bg-dusty-rose text-white' : 'bg-espresso text-white')}`}>
+                      {img.category === 'product' ? 'Product' : (img.category === 'carousel' ? 'IG Carousel' : 'Model')}
                    </span>
                    
                    <div className="flex gap-2">
@@ -328,11 +421,8 @@ const App: React.FC = () => {
                             <Download className="w-4 h-4" />
                         </button>
                         
-                        {/* Context Actions (Director / Product) */}
-                        {/* Only show these if we are in Studio mode generally, or if we have an original file to work with. 
-                            However, the logic requires 'originalBase64' which might be missing if we are in gallery view from a previous session.
-                            We'll conditionally render if originalBase64 exists. */}
-                        {originalBase64 && (
+                        {/* Context Actions (Director / Product) - Only generic for carousel unless specific later */}
+                        {studioMode !== 'carousel' && originalBase64 && (
                             <>
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); handleDirectorCut(img); }}
@@ -421,20 +511,27 @@ const App: React.FC = () => {
           <div className="animate-in fade-in duration-500">
             {/* Studio Mode Toggle */}
             <div className="flex justify-center mb-8">
-                <div className="bg-white border border-warm-taupe p-1.5 rounded-full flex shadow-sm">
+                <div className="bg-white border border-warm-taupe p-1.5 rounded-full flex shadow-sm gap-1 overflow-x-auto max-w-full">
                     <button
                         onClick={() => switchStudioMode('model')}
-                        className={`flex items-center gap-2 px-6 py-2 rounded-full text-sm font-bold transition-all ${studioMode === 'model' ? 'bg-dusty-rose text-white shadow-md' : 'text-cool-slate hover:bg-warm-taupe/20'}`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap ${studioMode === 'model' ? 'bg-dusty-rose text-white shadow-md' : 'text-cool-slate hover:bg-warm-taupe/20'}`}
                     >
                         <Heart className="w-4 h-4" />
                         Model Studio
                     </button>
                     <button
                         onClick={() => switchStudioMode('product')}
-                        className={`flex items-center gap-2 px-6 py-2 rounded-full text-sm font-bold transition-all ${studioMode === 'product' ? 'bg-sage-green text-white shadow-md' : 'text-cool-slate hover:bg-warm-taupe/20'}`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap ${studioMode === 'product' ? 'bg-sage-green text-white shadow-md' : 'text-cool-slate hover:bg-warm-taupe/20'}`}
                     >
                         <Tag className="w-4 h-4" />
                         Product Studio
+                    </button>
+                    <button
+                        onClick={() => switchStudioMode('carousel')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap ${studioMode === 'carousel' ? 'bg-espresso text-white shadow-md' : 'text-cool-slate hover:bg-warm-taupe/20'}`}
+                    >
+                        <LayoutTemplate className="w-4 h-4" />
+                        IG Carousel Maker
                     </button>
                 </div>
             </div>
@@ -442,75 +539,194 @@ const App: React.FC = () => {
             {/* Hero / Intro */}
             <div className="text-center mb-12 max-w-2xl mx-auto space-y-4">
               <h2 className="font-serif text-4xl md:text-5xl text-espresso mb-2">
-                {studioMode === 'model' ? 'Soft Life Visualization' : 'Luxury Product Studio'}
+                {studioMode === 'model' ? 'Soft Life Visualization' : (studioMode === 'carousel' ? 'Instagram Carousel Suite' : 'Luxury Product Studio')}
               </h2>
               <p className="text-cool-slate text-lg font-light">
                 {studioMode === 'model' 
                     ? "Upload your portrait and customize your aesthetic. We'll style you in the luxurious, self-care aesthetic you deserve."
-                    : "Generate high-end, commercial-grade product mockups. Perfect for Instagram campaigns and brand visuals."
+                    : (studioMode === 'carousel' 
+                        ? "Generate a complete 5-slide Instagram carousel. Cohesive, on-brand, and ready to post with zero editing."
+                        : "Generate high-end, commercial-grade product mockups. Perfect for Instagram campaigns and brand visuals.")
                 }
               </p>
               <ColorSwatch />
             </div>
 
-            {/* Upload Section */}
+            {/* Upload Section - Dynamic based on Mode */}
             {results.length === 0 && (
               <div className="max-w-2xl mx-auto space-y-8">
-                <div 
-                  className={`
-                    relative group border-2 border-dashed rounded-[2rem] p-12 text-center transition-all duration-300
-                    ${previewUrl ? (studioMode === 'product' ? 'border-sage-green bg-white' : 'border-dusty-rose bg-white') : 'border-warm-taupe bg-oatmeal/20 hover:bg-oatmeal/40 hover:border-sage-green'}
-                  `}
-                  onDragOver={handleDragOver}
-                  onDrop={handleDrop}
-                >
-                  <input 
-                    type="file" 
-                    ref={fileInputRef}
-                    onChange={handleFileChange} 
-                    className="hidden" 
-                    accept="image/png, image/jpeg, image/webp"
-                  />
-                  
-                  {previewUrl ? (
-                    <div className="relative">
-                      <img 
-                        src={previewUrl} 
-                        alt="Preview" 
-                        className="w-48 h-64 object-cover rounded-xl mx-auto shadow-xl border-4 border-white"
-                      />
-                      <button 
-                        onClick={() => {
-                            setFile(null);
-                            setPreviewUrl(null);
-                            setResults([]);
-                            setOriginalBase64(null);
-                        }}
-                        className="absolute -top-3 -right-3 bg-espresso text-white p-2 rounded-full hover:bg-red-500 transition-colors"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div 
-                        className="cursor-pointer space-y-4"
-                        onClick={() => fileInputRef.current?.click()}
-                    >
-                      <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto shadow-md group-hover:scale-110 transition-transform">
-                        {studioMode === 'model' ? <Camera className="w-10 h-10 text-dusty-rose" /> : <ShoppingBag className="w-10 h-10 text-sage-green" />}
-                      </div>
-                      <div>
-                        <h3 className="text-xl font-serif text-espresso">
-                            {studioMode === 'model' ? 'Upload Portrait' : 'Upload Product'}
-                        </h3>
-                        <p className="text-sm text-cool-slate mt-1">Drag & drop or click to browse</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                
+                {/* CAROUSEL MODE: DUAL UPLOAD */}
+                {studioMode === 'carousel' ? (
+                    <div className="space-y-6">
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Upload 1: Model */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase tracking-widest text-cool-slate ml-1">Step 1: The Model</label>
+                                <div 
+                                    className={`
+                                        relative border-2 border-dashed rounded-2xl p-6 text-center transition-all h-64 flex flex-col items-center justify-center
+                                        ${carouselModelPreview ? 'border-dusty-rose bg-white' : 'border-warm-taupe bg-oatmeal/20 hover:border-dusty-rose cursor-pointer'}
+                                    `}
+                                    onClick={() => !carouselModelPreview && carouselModelInputRef.current?.click()}
+                                >
+                                    <input 
+                                        type="file" 
+                                        ref={carouselModelInputRef}
+                                        onChange={handleCarouselModelChange} 
+                                        className="hidden" 
+                                        accept="image/png, image/jpeg, image/webp"
+                                    />
+                                    {carouselModelPreview ? (
+                                        <div className="relative w-full h-full">
+                                            <img src={carouselModelPreview} alt="Model" className="w-full h-full object-cover rounded-xl" />
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); setCarouselModelPreview(null); setCarouselModelFile(null); setCarouselModelBase64(null); }}
+                                                className="absolute -top-2 -right-2 bg-espresso text-white p-1.5 rounded-full hover:bg-red-500"
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="bg-white p-3 rounded-full mb-3"><Heart className="w-6 h-6 text-dusty-rose" /></div>
+                                            <p className="text-sm font-bold text-espresso">Upload Model</p>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
 
-                {/* Customization Controls */}
-                {file && (
+                            {/* Upload 2: Product */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase tracking-widest text-cool-slate ml-1">Step 2: The Product</label>
+                                <div 
+                                    className={`
+                                        relative border-2 border-dashed rounded-2xl p-6 text-center transition-all h-64 flex flex-col items-center justify-center
+                                        ${carouselProductPreview ? 'border-sage-green bg-white' : 'border-warm-taupe bg-oatmeal/20 hover:border-sage-green cursor-pointer'}
+                                    `}
+                                    onClick={() => !carouselProductPreview && carouselProductInputRef.current?.click()}
+                                >
+                                    <input 
+                                        type="file" 
+                                        ref={carouselProductInputRef}
+                                        onChange={handleCarouselProductChange} 
+                                        className="hidden" 
+                                        accept="image/png, image/jpeg, image/webp"
+                                    />
+                                    {carouselProductPreview ? (
+                                        <div className="relative w-full h-full">
+                                            <img src={carouselProductPreview} alt="Product" className="w-full h-full object-cover rounded-xl" />
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); setCarouselProductPreview(null); setCarouselProductFile(null); setCarouselProductBase64(null); }}
+                                                className="absolute -top-2 -right-2 bg-espresso text-white p-1.5 rounded-full hover:bg-red-500"
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="bg-white p-3 rounded-full mb-3"><Tag className="w-6 h-6 text-sage-green" /></div>
+                                            <p className="text-sm font-bold text-espresso">Upload Product</p>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                         </div>
+                         
+                         {/* Step 3: Theme Color Selection */}
+                         {(carouselModelPreview && carouselProductPreview) && (
+                             <div className="bg-white rounded-2xl p-6 shadow-sm border border-warm-taupe/30 animate-in fade-in slide-in-from-bottom-5">
+                                 <div className="flex items-center gap-2 mb-4 pb-2 border-b border-warm-taupe/20">
+                                     <Palette className="w-4 h-4 text-espresso" />
+                                     <h3 className="font-bold text-sm text-espresso uppercase tracking-widest">Step 3: Select Main Theme Color</h3>
+                                 </div>
+                                 <div className="flex flex-wrap gap-4 justify-center">
+                                     {COLORS.map((color) => (
+                                         <button
+                                            key={color.hex}
+                                            onClick={() => setCarouselThemeColor(color.hex)}
+                                            className={`
+                                                group relative w-12 h-12 rounded-full border-2 transition-all duration-300
+                                                ${carouselThemeColor === color.hex ? 'scale-110 ring-2 ring-offset-2 ring-espresso border-white' : 'border-transparent hover:scale-105'}
+                                            `}
+                                            style={{ backgroundColor: color.hex }}
+                                            title={color.name}
+                                         >
+                                             {carouselThemeColor === color.hex && (
+                                                 <div className="absolute inset-0 flex items-center justify-center">
+                                                     <div className="w-2 h-2 bg-white rounded-full"></div>
+                                                 </div>
+                                             )}
+                                         </button>
+                                     ))}
+                                 </div>
+                                 <p className="text-center text-xs text-cool-slate mt-4">
+                                     {carouselThemeColor 
+                                        ? `Selected: ${COLORS.find(c => c.hex === carouselThemeColor)?.name}` 
+                                        : "Please select a brand color to unify the carousel."}
+                                 </p>
+                             </div>
+                         )}
+                    </div>
+                ) : (
+                    // STANDARD SINGLE UPLOAD MODE
+                    <div 
+                    className={`
+                        relative group border-2 border-dashed rounded-[2rem] p-12 text-center transition-all duration-300
+                        ${previewUrl ? (studioMode === 'product' ? 'border-sage-green bg-white' : 'border-dusty-rose bg-white') : 'border-warm-taupe bg-oatmeal/20 hover:bg-oatmeal/40 hover:border-sage-green'}
+                    `}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                    >
+                    <input 
+                        type="file" 
+                        ref={fileInputRef}
+                        onChange={handleFileChange} 
+                        className="hidden" 
+                        accept="image/png, image/jpeg, image/webp"
+                    />
+                    
+                    {previewUrl ? (
+                        <div className="relative">
+                        <img 
+                            src={previewUrl} 
+                            alt="Preview" 
+                            className="w-48 h-64 object-cover rounded-xl mx-auto shadow-xl border-4 border-white"
+                        />
+                        <button 
+                            onClick={() => {
+                                setFile(null);
+                                setPreviewUrl(null);
+                                setResults([]);
+                                setOriginalBase64(null);
+                            }}
+                            className="absolute -top-3 -right-3 bg-espresso text-white p-2 rounded-full hover:bg-red-500 transition-colors"
+                        >
+                            <RefreshCw className="w-4 h-4" />
+                        </button>
+                        </div>
+                    ) : (
+                        <div 
+                            className="cursor-pointer space-y-4"
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                        <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto shadow-md group-hover:scale-110 transition-transform">
+                            {studioMode === 'model' ? <Camera className="w-10 h-10 text-dusty-rose" /> : <ShoppingBag className="w-10 h-10 text-sage-green" />}
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-serif text-espresso">
+                                {studioMode === 'model' ? 'Upload Portrait' : 'Upload Product'}
+                            </h3>
+                            <p className="text-sm text-cool-slate mt-1">Drag & drop or click to browse</p>
+                        </div>
+                        </div>
+                    )}
+                    </div>
+                )}
+
+
+                {/* Customization Controls (Only for Standard Modes) */}
+                {studioMode !== 'carousel' && file && (
                   <div className="bg-white rounded-2xl p-6 shadow-sm border border-warm-taupe/30 space-y-6 animate-in fade-in slide-in-from-bottom-5 duration-500">
                     <div className="flex items-center justify-between border-b border-warm-taupe/20 pb-4">
                       <h3 className="font-serif text-lg text-espresso flex items-center gap-2">
@@ -560,7 +776,7 @@ const App: React.FC = () => {
                                     <span className="font-bold text-sm text-espresso">Director's Cut</span>
                                 </div>
                                 <p className="text-xs text-cool-slate leading-relaxed">
-                                    Generates 4 professional camera angles of your <b>exact upload</b>. Preserves details, outfit, and background with 0 changes.
+                                    Generates professional camera angles (including direct eye contact) of your <b>exact upload</b>. Preserves details, outfit, and background with 0 changes.
                                 </p>
                             </label>
                         </div>
@@ -633,18 +849,26 @@ const App: React.FC = () => {
                 <div className="flex justify-center pt-4">
                   {status === GenerationStatus.GENERATING || status === GenerationStatus.UPLOADING ? (
                     <div className="flex flex-col items-center space-y-4">
-                        <div className={`w-16 h-16 border-4 border-oatmeal rounded-full animate-spin ${studioMode === 'product' ? 'border-t-sage-green' : 'border-t-dusty-rose'}`}></div>
+                        <div className={`w-16 h-16 border-4 border-oatmeal rounded-full animate-spin ${studioMode === 'product' ? 'border-t-sage-green' : (studioMode === 'carousel' ? 'border-t-espresso' : 'border-t-dusty-rose')}`}></div>
                         <p className="font-serif italic text-sage-green animate-pulse">
-                            {generationType === 'directors' ? 'Filming director\'s cut...' : `Curating your ${studioMode} aesthetic...`}
+                            {studioMode === 'carousel' 
+                                ? 'Curating Instagram feed...' 
+                                : (generationType === 'directors' ? 'Filming director\'s cut...' : `Curating your ${studioMode} aesthetic...`)
+                            }
                         </p>
                     </div>
                   ) : (
                     <Button 
                         onClick={handleGenerate} 
-                        disabled={!file}
-                        className={`w-full md:w-auto min-w-[200px] ${studioMode === 'product' ? 'bg-sage-green hover:bg-[#5d6854]' : ''}`}
+                        disabled={studioMode === 'carousel' ? (!carouselModelFile || !carouselProductFile || !carouselThemeColor) : (!file)}
+                        className={`w-full md:w-auto min-w-[200px] ${studioMode === 'product' ? 'bg-sage-green hover:bg-[#5d6854]' : (studioMode === 'carousel' ? 'bg-espresso hover:bg-black' : '')}`}
                     >
-                        {status === GenerationStatus.ERROR ? 'Try Again' : (generationType === 'directors' ? 'Generate Director\'s Cut' : 'Generate Styles')}
+                        {status === GenerationStatus.ERROR 
+                            ? 'Try Again' 
+                            : (studioMode === 'carousel' 
+                                ? 'Generate IG Carousel' 
+                                : (generationType === 'directors' ? 'Generate Director\'s Cut' : 'Generate Styles'))
+                        }
                     </Button>
                   )}
                 </div>
@@ -664,13 +888,16 @@ const App: React.FC = () => {
                   <div>
                     <h3 className="font-serif text-3xl text-espresso">Studio Workflow</h3>
                     <p className="text-sage-green font-light italic">
-                        Select an image to expand via Director's Cut {studioMode === 'model' && 'or add products'}.
+                        {studioMode === 'carousel' 
+                            ? 'Your 5-slide carousel is ready. Consistent. Cohesive. On Brand.'
+                            : `Select an image to expand via Director's Cut ${studioMode === 'model' ? 'or add products' : ''}.`
+                        }
                     </p>
                   </div>
                   <div className="flex gap-3">
                     <Button onClick={handleGenerate} className="text-sm py-2 px-6">
                       <RefreshCw className="w-4 h-4 mr-2 inline" />
-                      Generate Again
+                      Regenerate
                     </Button>
                     <Button variant="outline" onClick={startNewSession} className="text-sm py-2 px-6">
                       New Session
@@ -768,7 +995,8 @@ const App: React.FC = () => {
                         <span className="text-[10px] uppercase font-bold tracking-widest">Save</span>
                     </button>
                     
-                    {originalBase64 && (
+                    {/* Context Actions - Conditionally Rendered */}
+                    {originalBase64 && studioMode !== 'carousel' && (
                         <>
                             <div className="w-px h-8 bg-warm-taupe/50"></div>
                             

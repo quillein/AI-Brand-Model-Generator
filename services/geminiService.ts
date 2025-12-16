@@ -171,6 +171,9 @@ export const generateProductVariations = async (
           You are an expert LUXURY PRODUCT PHOTOGRAPHER. 
           Task: Create a high-end commercial product mockup using the provided product image.
           
+          STRICT CONSTRAINT: NO HUMANS. NO MODELS. NO HANDS. NO BODY PARTS.
+          The image must be a pure product photography shot.
+
           THE PRODUCT:
           - Use the uploaded image as the product. 
           - Preserve the brand name, text, and logo on the product strictly. 
@@ -183,8 +186,8 @@ export const generateProductVariations = async (
           - COMPOSITION: ${currentAngle}
           
           CONTEXTUAL INTEGRATION:
-          - Place the product naturally in the scene (e.g., on a marble table, on a velvet cushion, floating in water, held by a blurred hand).
-          - If the scene implies a person (like "Walking in city"), place the product on a surface IN that environment or have it held up against the background. Do not focus on the person, focus on the PRODUCT.
+          - Place the product naturally in the scene (e.g., on a marble table, on a velvet cushion, floating in water, on a stone pedestal).
+          - If the scene implies a location (like "Walking in city"), place the product on a relevant surface (e.g., a cafe table, a park bench, a concrete ledge) with the environment blurred in the background. DO NOT show any people.
   
           LIGHTING:
           - Soft, expensive, commercial studio lighting or golden hour natural light.
@@ -243,7 +246,7 @@ export const generateAngleVariations = async (
     originalBase64: string,
     imageMimeType: string,
     originalScenarioLabel: string,
-    category: 'avatar' | 'product' = 'avatar'
+    category: 'avatar' | 'product' | 'carousel' = 'avatar'
 ): Promise<GeneratedImage[]> => {
     const apiKey = process.env.API_KEY;
     if (!apiKey) throw new Error("API Key is missing.");
@@ -269,6 +272,7 @@ export const generateAngleVariations = async (
                     TASK: Re-generate a hyper-realistic commercial shot of this SAME product in the SAME scenario: "${originalScenarioLabel}".
                     CRITICAL CHANGE: This specific shot must use the following COMPOSITION/ANGLE: "${angle}".
                     Keep the brand name/logo legible and the product distortion-free.
+                    STRICT CONSTRAINT: NO HUMANS. NO MODELS. NO HANDS. Pure product photography.
                 `;
             }
 
@@ -317,13 +321,18 @@ export const generateAngleVariations = async (
 export const generateDirectorsCut = async (
   originalBase64: string,
   imageMimeType: string,
-  category: 'avatar' | 'product' = 'avatar'
+  category: 'avatar' | 'product' | 'carousel' = 'avatar'
 ): Promise<GeneratedImage[]> => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) throw new Error("API Key is missing.");
   const ai = new GoogleGenAI({ apiKey });
 
-  const anglesToUse = category === 'product' ? PRODUCT_ANGLES : WORKFLOW_ANGLES;
+  let anglesToUse = category === 'product' ? [...PRODUCT_ANGLES] : [...WORKFLOW_ANGLES];
+
+  // Add mandatory direct eye contact angle for avatars
+  if (category === 'avatar') {
+    anglesToUse = ["Front Facing, Direct Eye Contact (Subject looking directly at camera)", ...anglesToUse];
+  }
 
   const promises = anglesToUse.map(async (angle, index): Promise<GeneratedImage | null> => {
       try {
@@ -335,12 +344,13 @@ export const generateDirectorsCut = async (
               TARGET ANGLE: ${angle}.
 
               STRICT CONSTRAINTS (ZERO CHANGES IN DETAILS):
-              1. PRESERVE THE SUBJECT: ${category === 'avatar' ? 'Same face, same makeup, same hair, same skin tone.' : 'Same product details, label, and shape.'}
+              1. PRESERVE THE SUBJECT: ${category === 'avatar' ? 'Same face, same makeup, same hair, same skin tone.' : 'Same product details, label, and shape. NO HUMANS/HANDS allowed.'}
               2. PRESERVE THE OUTFIT/SURFACE: ${category === 'avatar' ? 'Exact same clothing.' : 'Exact same surface material.'}
               3. PRESERVE THE BACKGROUND: Exact same location/setting.
               4. PRESERVE THE LIGHTING: Exact same lighting conditions.
               
               ONLY CHANGE THE PERSPECTIVE/CAMERA ANGLE.
+              ${angle.includes("Direct Eye Contact") ? "IMPORTANT: For this specific shot, ensure the subject makes direct eye contact with the camera lens." : ""}
               The goal is to provide a "Director's Cut" set of angles for the original uploaded image.
           `;
 
@@ -457,4 +467,152 @@ export const generateProductMockup = async (
         console.error("Error generating product mockup:", error);
         return [];
     }
+};
+
+export const generateIGCarousel = async (
+  modelBase64: string,
+  modelMimeType: string,
+  productBase64: string,
+  productMimeType: string,
+  themeColorHex: string,
+  themeColorName: string
+): Promise<GeneratedImage[]> => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) throw new Error("API Key is missing.");
+  const ai = new GoogleGenAI({ apiKey });
+
+  const tasks = [
+    {
+      type: 'thumbnail',
+      label: 'Main Carousel Thumbnail',
+      prompt: `
+        TASK: Create a MAIN COVER IMAGE (Thumbnail) for an Instagram Carousel.
+        
+        INPUTS: 
+        - Model (Image 1)
+        - Product (Image 2)
+        
+        COMPOSITION: Dynamic and Eye-Catching.
+        CONTENT: Show the Model interacting with the Product OR a creative collage style blending the two.
+        COLOR FOCUS: Maximize the use of the theme color: ${themeColorName} (${themeColorHex}).
+        VIBE: High-end luxury ad campaign, "Stop Scrolling" impact.
+      `
+    },
+    {
+      type: 'product_accurate',
+      label: 'Pure Product Shot',
+      prompt: `
+        TASK: Create a COMMERCIAL PRODUCT PHOTOGRAPHY shot.
+        
+        INPUTS:
+        - Product (Image 2) - IGNORE THE MODEL IMAGE for this specific shot.
+        
+        STRICT CONSTRAINTS:
+        1. PRODUCT ACCURACY: The product must look EXACTLY like the input image (logos, text, shape). 100% Accuracy.
+        2. NO ALTERATION: Do not change the product's appearance.
+        3. ENVIRONMENT: Place it in a luxury setting that matches the theme color: ${themeColorName} (${themeColorHex}).
+        4. NO HUMANS: This is a standalone product shot.
+      `
+    },
+    {
+      type: 'interaction',
+      label: 'Model Interaction',
+      prompt: `
+        TASK: Create a LIFESTYLE SHOT of the Model using the Product.
+        
+        INPUTS:
+        - Model (Image 1)
+        - Product (Image 2)
+        
+        ACTION: The model should be holding, applying, or using the product naturally.
+        STYLE: Candid, "Soft Life", aspirational.
+        COLOR: Ensure the outfit or background complements the theme color: ${themeColorName} (${themeColorHex}).
+        PRESERVE FACIAL IDENTITY of the model.
+      `
+    },
+    {
+      type: 'background',
+      label: 'Textured Background',
+      prompt: `
+        TASK: Create a HIGH-QUALITY BACKGROUND IMAGE for text overlays.
+        
+        INPUTS: None needed (Pure generation based on vibe).
+        
+        VISUALS: Abstract luxury texture (e.g., silk, water ripples, blurred marble, bokeh lights).
+        COLOR: Dominant use of the theme color: ${themeColorName} (${themeColorHex}).
+        FOCUS: Semi-blurred out to allow for post-processing text addition (CTA).
+        NO PEOPLE, NO PRODUCTS. Just atmosphere.
+      `
+    },
+    {
+      type: 'closeup',
+      label: 'Artistic Close-Up',
+      prompt: `
+        TASK: Create a MACRO CLOSE-UP shot of the Product.
+        
+        INPUTS: 
+        - Product (Image 2) - IGNORE MODEL.
+        
+        VISUALS: Focus on texture, packaging details, and light reflection.
+        AESTHETIC: Add attractive visual elements (water droplets, flower petals, light streaks) that match the theme color: ${themeColorName} (${themeColorHex}).
+        Goal: Satisfying, sensory visual (ASMR visual).
+      `
+    }
+  ];
+
+  const promises = tasks.map(async (task, index): Promise<GeneratedImage | null> => {
+    try {
+      // For background, we don't strictly need input images, but passing them doesn't hurt as reference for "vibe"
+      // However, to keep it clean, we'll pass both for most, or just prompt for background.
+      
+      const parts: any[] = [{ text: task.prompt }];
+      
+      if (task.type !== 'background') {
+         // Pass product for product shots
+         if (task.type === 'product_accurate' || task.type === 'closeup') {
+            parts.push({ inlineData: { mimeType: productMimeType, data: productBase64 } });
+         } 
+         // Pass both for interaction/thumbnail
+         else {
+            parts.push({ inlineData: { mimeType: modelMimeType, data: modelBase64 } });
+            parts.push({ inlineData: { mimeType: productMimeType, data: productBase64 } });
+         }
+      }
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: { parts },
+        config: {
+          imageConfig: { aspectRatio: "3:4" }, // Vertical for IG Stories/Reels/Carousel
+          systemInstruction: SYSTEM_INSTRUCTION
+        }
+      });
+
+      let imageUrl = '';
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) {
+          imageUrl = `data:image/png;base64,${part.inlineData.data}`;
+          break;
+        }
+      }
+
+      if (!imageUrl) throw new Error("No image generated");
+
+      return {
+        id: crypto.randomUUID(),
+        url: imageUrl,
+        prompt: `IG Carousel: ${task.label}`,
+        scenario: task.label,
+        timestamp: Date.now() + index, // slight offset to order them
+        category: 'carousel'
+      };
+
+    } catch (error) {
+      console.error(`Error generating carousel item ${task.label}:`, error);
+      return null;
+    }
+  });
+
+  const results = await Promise.all(promises);
+  return results.filter((img): img is GeneratedImage => img !== null);
 };
