@@ -12,6 +12,7 @@ export interface GeneratedImage {
   prompt: string;
   scenario: string;
   timestamp: number;
+  category: 'avatar' | 'product';
 }
 
 export interface Scenario {

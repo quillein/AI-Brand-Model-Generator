@@ -14,6 +14,20 @@ export const COLORS: ColorPalette[] = [
 
 export const CORE_COLOR = '#D99BA3'; // Dusty Rose
 
+export const WORKFLOW_ANGLES = [
+  "Extreme Close-Up (Focus on makeup/skin)",
+  "Side Profile (Cinematic/Candid)",
+  "Low Angle (Power/Fashion Stance)",
+  "Wide Angle (Full Environment Context)"
+];
+
+export const PRODUCT_ANGLES = [
+  "Top-Down Flat Lay (Editorial Composition)",
+  "Macro Detail Shot (Texture/Label Focus)",
+  "Eye-Level Hero Shot (Clean Studio)",
+  "Lifestyle Context (In Use/On Surface)"
+];
+
 export const SCENERIES: Scenery[] = [
   // --- High Luxury ---
   { 
@@ -49,7 +63,7 @@ export const SCENERIES: Scenery[] = [
   
   // --- Everyday Luxury (Relatable & Aesthetic) ---
   {
-    id: 'luxury_grocery',
+    id: 'luxury_grocery', 
     label: 'Luxury Grocery Run',
     prompt: 'candid shot browsing the aisles of a high-end organic grocery store (like Erewhon), holding a green juice, wearing stylish athleisure, clean aesthetic'
   },
