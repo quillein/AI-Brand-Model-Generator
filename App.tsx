@@ -1,5 +1,6 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, Download, RefreshCw, Camera, Heart, Palette, MessageSquare, LayoutGrid, Trash2, History, Video, ShoppingBag, Plus, Tag, Clapperboard, Maximize2, X, LayoutTemplate, Layers, Megaphone, Copy, Check } from 'lucide-react';
+import { Sparkles, Download, RefreshCw, Camera, Heart, Palette, MessageSquare, LayoutGrid, Trash2, History, Video, ShoppingBag, Plus, Tag, Clapperboard, Maximize2, X, LayoutTemplate, Layers, Megaphone, Copy, Check, FileVideo, ExternalLink } from 'lucide-react';
 import { generateAvatarVariations, generateAngleVariations, generateProductMockup, fileToGenerativePart, generateProductVariations, generateDirectorsCut, generateIGCarousel, generateMarketingCopy } from './services/geminiService';
 import { GeneratedImage, GeneratedCopy, GenerationStatus } from './types';
 import { Button } from './components/Button';
@@ -12,21 +13,26 @@ const App: React.FC = () => {
   const [studioMode, setStudioMode] = useState<'model' | 'product' | 'carousel' | 'copy'>('model');
   const [generationType, setGenerationType] = useState<'creative' | 'directors'>('creative');
   
-  // Single Upload State (Model / Product modes)
+  // Model Studio Upload
   const [file, setFile] = useState<File | null>(null);
   const [originalBase64, setOriginalBase64] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  // Carousel Upload State (Dual Upload)
+  // Product Studio Uploads (Multiple)
+  const [productFiles, setProductFiles] = useState<File[]>([]);
+  const [productPreviews, setProductPreviews] = useState<string[]>([]);
+  const [productBase64s, setProductBase64s] = useState<string[]>([]);
+
+  // Carousel Upload State
   const [carouselModelFile, setCarouselModelFile] = useState<File | null>(null);
   const [carouselModelPreview, setCarouselModelPreview] = useState<string | null>(null);
   const [carouselModelBase64, setCarouselModelBase64] = useState<string | null>(null);
 
-  const [carouselProductFile, setCarouselProductFile] = useState<File | null>(null);
-  const [carouselProductPreview, setCarouselProductPreview] = useState<string | null>(null);
-  const [carouselProductBase64, setCarouselProductBase64] = useState<string | null>(null);
+  const [carouselProductFiles, setCarouselProductFiles] = useState<File[]>([]);
+  const [carouselProductPreviews, setCarouselProductPreviews] = useState<string[]>([]);
+  const [carouselProductBase64s, setCarouselProductBase64s] = useState<string[]>([]);
 
-  const [carouselThemeColor, setCarouselThemeColor] = useState<string | null>(null); // Hex code
+  const [carouselThemeColor, setCarouselThemeColor] = useState<string | null>(null);
 
   // Marketing Copy State
   const [marketingProduct, setMarketingProduct] = useState('');
@@ -39,46 +45,31 @@ const App: React.FC = () => {
   const [results, setResults] = useState<GeneratedImage[]>([]);
   const [history, setHistory] = useState<GeneratedImage[]>([]);
   
-  // Selection State
   const [selectedScenery, setSelectedScenery] = useState<string | undefined>(undefined);
   const [selectedStyle, setSelectedStyle] = useState<string | undefined>(undefined);
   const [customPrompt, setCustomPrompt] = useState<string>('');
 
-  // Workflow State
-  const [processingId, setProcessingId] = useState<string | null>(null); // To show loading on specific cards
+  const [processingId, setProcessingId] = useState<string | null>(null);
   const productInputRef = useRef<HTMLInputElement>(null);
   const [selectedImageForProduct, setSelectedImageForProduct] = useState<GeneratedImage | null>(null);
   const [lightboxImage, setLightboxImage] = useState<GeneratedImage | null>(null);
+  const [videoPromptCopied, setVideoPromptCopied] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const productStudioInputRef = useRef<HTMLInputElement>(null);
   const carouselModelInputRef = useRef<HTMLInputElement>(null);
   const carouselProductInputRef = useRef<HTMLInputElement>(null);
 
-  // Load history from IndexedDB on mount
   useEffect(() => {
-    const loadHistory = async () => {
-      try {
-        const savedImages = await getImagesFromDB();
-        setHistory(savedImages);
-      } catch (e) {
-        console.error("Failed to load history from DB", e);
-      }
-    };
-    loadHistory();
+    getImagesFromDB().then(setHistory).catch(console.error);
   }, []);
 
-  // Update history wrapper to sync with DB
   const addToHistory = async (newImages: GeneratedImage[]) => {
     try {
-      // Save to DB (which handles cleanup limit)
       await saveImagesToDB(newImages);
-      
-      // Reload from DB to ensure UI is in sync with the cleanup logic
       const savedImages = await getImagesFromDB();
       setHistory(savedImages);
     } catch (e) {
-      console.error("Failed to save to DB", e);
-      // Fallback update local state if DB fails
       setHistory(prev => [...newImages, ...prev]);
     }
   };
@@ -86,25 +77,22 @@ const App: React.FC = () => {
   const switchStudioMode = (mode: 'model' | 'product' | 'carousel' | 'copy') => {
     if (studioMode === mode) return;
     setStudioMode(mode);
-    // Reset current session when switching context
     setFile(null);
     setPreviewUrl(null);
     setOriginalBase64(null);
+    setProductFiles([]);
+    setProductPreviews([]);
+    setProductBase64s([]);
+    setCarouselModelFile(null);
+    setCarouselModelPreview(null);
+    setCarouselModelBase64(null);
+    setCarouselProductFiles([]);
+    setCarouselProductPreviews([]);
+    setCarouselProductBase64s([]);
     setResults([]);
     resetSelection();
     setGenerationType('creative');
     setStatus(GenerationStatus.IDLE);
-    
-    // Reset Carousel specific state
-    setCarouselModelFile(null);
-    setCarouselModelPreview(null);
-    setCarouselModelBase64(null);
-    setCarouselProductFile(null);
-    setCarouselProductPreview(null);
-    setCarouselProductBase64(null);
-    setCarouselThemeColor(null);
-
-    // Reset Marketing Copy
     setMarketingProduct('');
     setMarketingContext('');
     setMarketingAudience('');
@@ -113,72 +101,65 @@ const App: React.FC = () => {
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
-      const selectedFile = event.target.files[0];
-      setFile(selectedFile);
-      setPreviewUrl(URL.createObjectURL(selectedFile));
-      
-      // Store base64 immediately for reuse in workflows
-      try {
-        const base64 = await fileToGenerativePart(selectedFile);
-        setOriginalBase64(base64);
-      } catch (e) {
-        console.error("Failed to process image", e);
-      }
-
+      // FIX line 118 error: Argument of type 'unknown' is not assignable to parameter of type 'Blob | MediaSource'
+      const f = event.target.files[0] as unknown as File;
+      setFile(f);
+      // Casting to Blob to satisfy createObjectURL requirements when type is unknown
+      setPreviewUrl(URL.createObjectURL(f as unknown as Blob));
+      fileToGenerativePart(f).then(setOriginalBase64).catch(console.error);
       setResults([]);
       setStatus(GenerationStatus.IDLE);
       setView('studio');
     }
   };
 
-  // Carousel Handlers
+  const handleProductStudioChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      const newPreviews = newFiles.map(f => URL.createObjectURL(f));
+      const newBase64s = await Promise.all(newFiles.map(fileToGenerativePart));
+      
+      setProductFiles(prev => [...prev, ...newFiles]);
+      setProductPreviews(prev => [...prev, ...newPreviews]);
+      setProductBase64s(prev => [...prev, ...newBase64s]);
+      setResults([]);
+      setStatus(GenerationStatus.IDLE);
+    }
+  };
+
+  const removeProductFromStudio = (index: number) => {
+    setProductFiles(prev => prev.filter((_, i) => i !== index));
+    setProductPreviews(prev => prev.filter((_, i) => i !== index));
+    setProductBase64s(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleCarouselModelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const f = e.target.files[0];
+      // FIX line 148 error: Argument of type 'unknown' is not assignable to parameter of type 'Blob | MediaSource'
+      const f = e.target.files[0] as unknown as File;
       setCarouselModelFile(f);
-      setCarouselModelPreview(URL.createObjectURL(f));
-      try {
-        const base64 = await fileToGenerativePart(f);
-        setCarouselModelBase64(base64);
-      } catch(e) { console.error(e); }
+      // Casting to Blob to satisfy createObjectURL requirements when type is unknown
+      setCarouselModelPreview(URL.createObjectURL(f as unknown as Blob));
+      fileToGenerativePart(f).then(setCarouselModelBase64).catch(console.error);
     }
   };
 
   const handleCarouselProductChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const f = e.target.files[0];
-      setCarouselProductFile(f);
-      setCarouselProductPreview(URL.createObjectURL(f));
-      try {
-        const base64 = await fileToGenerativePart(f);
-        setCarouselProductBase64(base64);
-      } catch(e) { console.error(e); }
-    }
-  };
-
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const selectedFile = e.dataTransfer.files[0];
-      setFile(selectedFile);
-      setPreviewUrl(URL.createObjectURL(selectedFile));
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      const newPreviews = newFiles.map(f => URL.createObjectURL(f));
+      const newBase64s = await Promise.all(newFiles.map(fileToGenerativePart));
       
-      try {
-        const base64 = await fileToGenerativePart(selectedFile);
-        setOriginalBase64(base64);
-      } catch (error) {
-        console.error("Failed to process dropped image", error);
-      }
-
-      setResults([]);
-      setStatus(GenerationStatus.IDLE);
-      setView('studio');
+      setCarouselProductFiles(prev => [...prev, ...newFiles]);
+      setCarouselProductPreviews(prev => [...prev, ...newPreviews]);
+      setCarouselProductBase64s(prev => [...prev, ...newBase64s]);
     }
+  };
+
+  const removeProductFromCarousel = (index: number) => {
+    setCarouselProductFiles(prev => prev.filter((_, i) => i !== index));
+    setCarouselProductPreviews(prev => prev.filter((_, i) => i !== index));
+    setCarouselProductBase64s(prev => prev.filter((_, i) => i !== index));
   };
 
   const copyToClipboard = (text: string, sectionKey: string) => {
@@ -186,14 +167,20 @@ const App: React.FC = () => {
     setCopiedSection(sectionKey);
     setTimeout(() => setCopiedSection(null), 2000);
   };
+  
+  const copyVideoPrompt = (text: string) => {
+      navigator.clipboard.writeText(text);
+      setVideoPromptCopied(true);
+      setTimeout(() => setVideoPromptCopied(false), 2000);
+  };
 
   const handleGenerate = async () => {
-    
-    // Check requirements based on mode
     if (studioMode === 'carousel') {
-        if (!carouselModelBase64 || !carouselProductBase64 || !carouselThemeColor) return;
+        if (!carouselModelBase64 || carouselProductBase64s.length === 0 || !carouselThemeColor) return;
     } else if (studioMode === 'copy') {
         if (!marketingProduct || !marketingContext) return;
+    } else if (studioMode === 'product') {
+        if (productBase64s.length === 0) return;
     } else {
         if (!file || !originalBase64) return;
     }
@@ -204,55 +191,48 @@ const App: React.FC = () => {
     
     try {
       setStatus(GenerationStatus.GENERATING);
-      
       let generatedImages: GeneratedImage[] = [];
 
       if (studioMode === 'copy') {
-          // Marketing Copy Workflow
           const result = await generateMarketingCopy(marketingProduct, marketingContext, marketingAudience);
           setCopyResult(result);
           setStatus(GenerationStatus.COMPLETE);
           return;
       }
       else if (studioMode === 'carousel') {
-          // IG Carousel Workflow
-          if (carouselModelFile && carouselProductFile && carouselModelBase64 && carouselProductBase64 && carouselThemeColor) {
-              const modelMime = carouselModelFile.type === 'image/png' ? 'image/png' : 'image/jpeg';
-              const productMime = carouselProductFile.type === 'image/png' ? 'image/png' : 'image/jpeg';
-              
-              const selectedColorObj = COLORS.find(c => c.hex === carouselThemeColor);
-              const colorName = selectedColorObj ? selectedColorObj.name : 'Luxury Brand Color';
-
-              generatedImages = await generateIGCarousel(
-                  carouselModelBase64, modelMime,
-                  carouselProductBase64, productMime,
-                  carouselThemeColor, colorName
+          const productMime = carouselProductFiles[0]?.type || 'image/jpeg';
+          generatedImages = await generateIGCarousel(
+              carouselModelBase64!, 
+              carouselModelFile!.type,
+              carouselProductBase64s.map(data => ({ data, mimeType: productMime })),
+              carouselThemeColor!, 
+              COLORS.find(c => c.hex === carouselThemeColor)?.name || 'Theme'
+          );
+      } else if (studioMode === 'product') {
+          const productMime = productFiles[0]?.type || 'image/jpeg';
+          if (generationType === 'directors') {
+              generatedImages = await generateDirectorsCut(
+                  productBase64s.map(data => ({ data, mimeType: productMime })),
+                  'product'
+              );
+          } else {
+              generatedImages = await generateProductVariations(
+                  productBase64s.map(data => ({ data, mimeType: productMime })),
+                  { sceneryId: selectedScenery, styleId: selectedStyle, customPrompt: customPrompt.trim() || undefined }
               );
           }
       } else {
-          // Standard Single Image Workflows
-          if (file && originalBase64) {
-            const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-            
-            if (generationType === 'directors') {
-                // Director's Cut
-                generatedImages = await generateDirectorsCut(originalBase64, mimeType, studioMode === 'model' ? 'avatar' : 'product');
-            } else {
-                // Creative Mode
-                if (studioMode === 'model') {
-                    generatedImages = await generateAvatarVariations(originalBase64, mimeType, {
-                        sceneryId: selectedScenery,
-                        styleId: selectedStyle,
-                        customPrompt: customPrompt.trim() !== '' ? customPrompt : undefined
-                    });
-                } else {
-                    generatedImages = await generateProductVariations(originalBase64, mimeType, {
-                        sceneryId: selectedScenery,
-                        styleId: selectedStyle,
-                        customPrompt: customPrompt.trim() !== '' ? customPrompt : undefined
-                    });
-                }
-            }
+          // FIX line 276 error: Property 'type' does not exist on type 'unknown'
+          // Using double cast to safely access 'type' property from potentially unknown 'file' state
+          const mimeType = (file as unknown as File).type;
+          if (generationType === 'directors') {
+              generatedImages = await generateDirectorsCut([{ data: originalBase64!, mimeType }], 'avatar');
+          } else {
+              generatedImages = await generateAvatarVariations(originalBase64!, mimeType, {
+                  sceneryId: selectedScenery,
+                  styleId: selectedStyle,
+                  customPrompt: customPrompt.trim() || undefined
+              });
           }
       }
       
@@ -265,73 +245,46 @@ const App: React.FC = () => {
     }
   };
 
-  // --- Workflow: 4 Camera Angles ---
   const handleDirectorCut = async (img: GeneratedImage) => {
-    if (!originalBase64 || !file) return;
     setProcessingId(img.id);
-    setLightboxImage(null); // Close lightbox if open
-    
+    setLightboxImage(null);
     try {
-        const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-        // Pass category to handle angle logic
+        // We use the image the user is looking at as the canonical reference for Reshooting
         const angleVariations = await generateAngleVariations(
-            originalBase64,
-            mimeType,
-            img.scenario,
-            img.category 
+            [{ data: img.url.split(',')[1], mimeType: 'image/png' }], 
+            img.scenario, 
+            img.category
         );
-        
-        // Add to history and update current view slightly to show something happened
-        if (view === 'studio') {
-             setResults(prev => [...angleVariations, ...prev]);
-        }
+        if (view === 'studio') setResults(prev => [...angleVariations, ...prev]);
         await addToHistory(angleVariations);
-        alert("Director's Cut complete! 4 new variations added to your collection.");
-    } catch (e) {
-        console.error(e);
-        alert("Failed to generate angles.");
-    } finally {
-        setProcessingId(null);
-    }
+    } catch (e) { alert("Failed to generate angles."); }
+    finally { setProcessingId(null); }
   };
 
-  // --- Workflow: Product Mockup ---
   const triggerProductUpload = (img: GeneratedImage) => {
     setSelectedImageForProduct(img);
     productInputRef.current?.click();
-    setLightboxImage(null); // Close lightbox if open
+    setLightboxImage(null);
   };
 
-  const handleProductFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0] && selectedImageForProduct && originalBase64 && file) {
-        const productFile = e.target.files[0];
+  const handleProductMockupChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && selectedImageForProduct && originalBase64 && file) {
+        const prodFiles = Array.from(e.target.files);
         setProcessingId(selectedImageForProduct.id);
-        
         try {
-            const productBase64 = await fileToGenerativePart(productFile);
-            const faceMime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-            const productMime = productFile.type === 'image/png' ? 'image/png' : 'image/jpeg';
-
+            const prodBase64s = await Promise.all(prodFiles.map(fileToGenerativePart));
             const mockupResults = await generateProductMockup(
                 originalBase64,
-                faceMime,
-                productBase64,
-                productMime,
+                file.type,
+                prodBase64s.map((data, i) => ({ data, mimeType: prodFiles[i].type })),
                 selectedImageForProduct.scenario
             );
-
-            if (view === 'studio') {
-                setResults(prev => [...mockupResults, ...prev]);
-            }
+            if (view === 'studio') setResults(prev => [...mockupResults, ...prev]);
             await addToHistory(mockupResults);
-            alert("Product Mockup generated successfully!");
-        } catch (error) {
-            console.error(error);
-            alert("Failed to create product mockup.");
-        } finally {
+        } catch (error) { alert("Failed to create product mockup."); }
+        finally {
             setProcessingId(null);
             setSelectedImageForProduct(null);
-            if (productInputRef.current) productInputRef.current.value = '';
         }
     }
   };
@@ -340,37 +293,21 @@ const App: React.FC = () => {
     const link = document.createElement('a');
     link.href = url;
     link.download = `luxe-aura-${id}.png`;
-    document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
   };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    
-    // Optimistic Update
     setHistory(prev => prev.filter(item => item.id !== id));
     setResults(prev => prev.filter(item => item.id !== id));
-    
-    if (lightboxImage?.id === id) {
-        setLightboxImage(null);
-    }
-
-    try {
-      await deleteImageFromDB(id);
-    } catch (e) {
-      console.error("Failed to delete from DB", e);
-    }
+    if (lightboxImage?.id === id) setLightboxImage(null);
+    await deleteImageFromDB(id);
   };
 
   const clearHistory = async () => {
-    if (window.confirm("Are you sure you want to clear your entire collection?")) {
+    if (window.confirm("Clear collection?")) {
       setHistory([]);
-      try {
-        await clearDB();
-      } catch (e) {
-        console.error("Failed to clear DB", e);
-      }
+      await clearDB();
     }
   };
 
@@ -386,111 +323,56 @@ const App: React.FC = () => {
     setFile(null);
     setOriginalBase64(null);
     setPreviewUrl(null);
+    setProductFiles([]);
+    setProductPreviews([]);
+    setProductBase64s([]);
     setCarouselModelFile(null);
     setCarouselModelPreview(null);
     setCarouselModelBase64(null);
-    setCarouselProductFile(null);
-    setCarouselProductPreview(null);
-    setCarouselProductBase64(null);
+    setCarouselProductFiles([]);
+    setCarouselProductPreviews([]);
+    setCarouselProductBase64s([]);
     resetSelection();
     setStatus(GenerationStatus.IDLE);
     setMarketingProduct('');
     setMarketingContext('');
     setMarketingAudience('');
     setCopyResult(null);
-  }
+  };
 
-  // --- Render Helpers ---
   const renderImageCard = (img: GeneratedImage) => (
     <div key={img.id} className="group relative flex flex-col space-y-3 animate-in fade-in duration-500">
-        <div 
-            className="relative overflow-hidden rounded-2xl shadow-xl bg-warm-taupe aspect-[3/4] cursor-pointer"
-            onClick={() => setLightboxImage(img)}
-        >
-            <img 
-                src={img.url} 
-                alt={img.scenario} 
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-            />
-            
-            {/* Processing Overlay */}
+        <div className="relative overflow-hidden rounded-2xl shadow-xl bg-warm-taupe aspect-[3/4] cursor-pointer" onClick={() => setLightboxImage(img)}>
+            <img src={img.url} alt={img.scenario} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
             {processingId === img.id && (
                 <div className="absolute inset-0 bg-black/60 z-30 flex flex-col items-center justify-center text-white backdrop-blur-sm">
                     <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
-                    <span className="text-xs font-bold tracking-widest uppercase">Designing...</span>
+                    <span className="text-xs font-bold tracking-widest uppercase text-center px-4">Processing...</span>
                 </div>
             )}
-
-            {/* QUICK DELETE (Top Right) */}
-            <button 
-                onClick={(e) => handleDelete(img.id, e)}
-                className="absolute top-3 right-3 bg-white/90 p-2 rounded-full text-red-400 hover:bg-red-500 hover:text-white transition-all shadow-lg opacity-0 group-hover:opacity-100 z-20 scale-90 hover:scale-100"
-                title="Delete Image"
-            >
-                <Trash2 className="w-4 h-4" />
-            </button>
-
-            {/* FULL SCREEN TRIGGER (Center) */}
-            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10 pointer-events-none">
-                <div className="bg-black/30 backdrop-blur-sm p-3 rounded-full text-white pointer-events-auto hover:bg-black/50 transition-colors transform scale-90 hover:scale-110 shadow-xl" onClick={(e) => { e.stopPropagation(); setLightboxImage(img); }}>
-                    <Maximize2 className="w-6 h-6" />
-                </div>
+            <button onClick={(e) => handleDelete(img.id, e)} className="absolute top-3 right-3 bg-white/90 p-2 rounded-full text-red-400 opacity-0 group-hover:opacity-100 z-20 hover:bg-red-500 hover:text-white transition-all"><Trash2 className="w-4 h-4" /></button>
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 z-10 pointer-events-none transition-opacity">
+                <div className="bg-black/30 backdrop-blur-sm p-3 rounded-full text-white pointer-events-auto shadow-xl"><Maximize2 className="w-6 h-6" /></div>
             </div>
-
-            {/* Bottom Actions Overlay */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end z-20">
+            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 z-20 transition-opacity">
                 <div className="flex justify-between items-end">
-                   {/* Tag */}
-                   <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold mb-1 inline-block ${img.category === 'product' ? 'bg-sage-green text-white' : (img.category === 'carousel' ? 'bg-dusty-rose text-white' : 'bg-espresso text-white')}`}>
-                      {img.category === 'product' ? 'Product' : (img.category === 'carousel' ? 'IG Carousel' : 'Model')}
-                   </span>
-                   
+                   <span className="text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold bg-espresso text-white">{img.category}</span>
                    <div className="flex gap-2">
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); handleDownload(img.url, img.id); }}
-                            className="bg-white/90 p-2 rounded-full text-espresso hover:bg-dusty-rose hover:text-white transition-all shadow-lg"
-                            title="Download"
-                        >
-                            <Download className="w-4 h-4" />
-                        </button>
-                        
-                        {/* Context Actions (Director / Product) - Only generic for carousel unless specific later */}
-                        {studioMode !== 'carousel' && originalBase64 && (
+                        <button onClick={(e) => { e.stopPropagation(); handleDownload(img.url, img.id); }} className="bg-white/90 p-2 rounded-full text-espresso shadow-lg hover:bg-dusty-rose hover:text-white transition-all"><Download className="w-4 h-4" /></button>
+                        {originalBase64 && studioMode !== 'carousel' && (
                             <>
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); handleDirectorCut(img); }}
-                                    className="bg-white/90 p-2 rounded-full text-espresso hover:bg-sage-green hover:text-white transition-all shadow-lg"
-                                    title="Director's Cut: 4 Angles"
-                                >
-                                    <Video className="w-4 h-4" />
-                                </button>
-
-                                {img.category === 'avatar' && (
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); triggerProductUpload(img); }}
-                                        className="bg-white/90 p-2 rounded-full text-espresso hover:bg-almond-buff hover:text-white transition-all shadow-lg"
-                                        title="Add Product Mockup"
-                                    >
-                                        <ShoppingBag className="w-4 h-4" />
-                                    </button>
-                                )}
+                                <button onClick={(e) => { e.stopPropagation(); handleDirectorCut(img); }} className="bg-white/90 p-2 rounded-full text-espresso shadow-lg hover:bg-sage-green hover:text-white transition-all"><Video className="w-4 h-4" /></button>
+                                {img.category === 'avatar' && <button onClick={(e) => { e.stopPropagation(); triggerProductUpload(img); }} className="bg-white/90 p-2 rounded-full text-espresso shadow-lg hover:bg-almond-buff hover:text-white transition-all"><ShoppingBag className="w-4 h-4" /></button>}
                             </>
                         )}
                    </div>
                 </div>
             </div>
         </div>
-        
-        {/* Simple Label */}
         <div className="px-2">
             <div className="flex justify-between items-start">
-                <span className="text-xs font-bold tracking-widest uppercase text-sage-green leading-relaxed line-clamp-2">
-                    {img.scenario}
-                </span>
-                <Heart className="w-4 h-4 text-dusty-rose flex-shrink-0 ml-2" />
-            </div>
-             <div className="mt-2 flex gap-2">
-                <div className="w-full h-1 bg-gradient-to-r from-dusty-rose to-oatmeal rounded-full opacity-50"></div>
+                <span className="text-xs font-bold uppercase text-sage-green leading-relaxed line-clamp-2">{img.scenario}</span>
+                <Heart className="w-4 h-4 text-dusty-rose ml-2 flex-shrink-0" />
             </div>
         </div>
     </div>
@@ -500,677 +382,370 @@ const App: React.FC = () => {
       <div className="bg-white rounded-2xl p-6 shadow-md border border-warm-taupe/30 space-y-4">
           <div className="flex justify-between items-center border-b border-warm-taupe/20 pb-3">
               <h3 className="font-serif text-xl text-espresso flex items-center gap-2">
-                  <Megaphone className="w-5 h-5 text-dusty-rose" />
+                  <Megaphone className="w-5 h-5 text-[#9370DB]" />
                   {title}
               </h3>
-              <button 
-                onClick={() => copyToClipboard(content, sectionKey)}
-                className="text-xs flex items-center gap-1 text-sage-green hover:text-espresso font-bold uppercase tracking-wide transition-colors"
-              >
+              <button onClick={() => copyToClipboard(content, sectionKey)} className="text-xs flex items-center gap-1 text-sage-green hover:text-espresso font-bold uppercase transition-colors">
                   {copiedSection === sectionKey ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  {copiedSection === sectionKey ? 'Copied' : 'Copy Text'}
+                  {copiedSection === sectionKey ? 'Copied' : 'Copy'}
               </button>
           </div>
-          <div className="text-sm text-espresso/80 leading-relaxed whitespace-pre-wrap font-sans">
-              {content}
-          </div>
+          <div className="text-sm text-espresso/80 leading-relaxed whitespace-pre-wrap font-sans">{content}</div>
       </div>
   );
 
   return (
-    <div className="min-h-screen bg-alabaster text-espresso font-sans selection:bg-dusty-rose selection:text-white pb-20 relative">
-      
-      {/* Hidden input for product uploads */}
-      <input 
-        type="file" 
-        ref={productInputRef}
-        onChange={handleProductFileChange}
-        className="hidden"
-        accept="image/png, image/jpeg, image/webp"
-      />
+    <div className="min-h-screen bg-alabaster text-espresso font-sans pb-20 relative selection:bg-dusty-rose selection:text-white">
+      <input type="file" ref={productInputRef} onChange={handleProductMockupChange} className="hidden" accept="image/*" multiple />
 
-      {/* Sticky Header */}
       <nav className="sticky top-0 z-40 bg-alabaster/90 backdrop-blur-md border-b border-warm-taupe/30 px-6 py-4 flex justify-between items-center shadow-sm">
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('studio')}>
           <Sparkles className="text-dusty-rose w-6 h-6" />
-          <h1 className="font-serif text-2xl font-bold tracking-tighter text-espresso">
-            LUXE<span className="text-dusty-rose">AURA</span>
-          </h1>
+          <h1 className="font-serif text-2xl font-bold tracking-tighter text-espresso">LUXE<span className="text-dusty-rose">AURA</span></h1>
         </div>
-        
-        {/* Mobile/Desktop Tab Switcher in Nav */}
         <div className="flex bg-warm-taupe/10 p-1 rounded-full">
-            <button 
-                onClick={() => setView('studio')}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold transition-all ${view === 'studio' ? 'bg-espresso text-white shadow-md' : 'text-cool-slate hover:text-espresso'}`}
-            >
-                <Camera className="w-4 h-4" />
-                <span className="hidden sm:inline">Studio</span>
-            </button>
-            <button 
-                onClick={() => setView('gallery')}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold transition-all ${view === 'gallery' ? 'bg-dusty-rose text-white shadow-md' : 'text-cool-slate hover:text-dusty-rose'}`}
-            >
-                <LayoutGrid className="w-4 h-4" />
-                <span className="hidden sm:inline">Collection</span>
-                <span className="ml-1 text-xs opacity-80">({history.length})</span>
-            </button>
+            <button onClick={() => setView('studio')} className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${view === 'studio' ? 'bg-espresso text-white shadow-md' : 'text-cool-slate'}`}><Camera className="w-4 h-4" />Studio</button>
+            <button onClick={() => setView('gallery')} className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${view === 'gallery' ? 'bg-dusty-rose text-white shadow-md' : 'text-cool-slate'}`}><LayoutGrid className="w-4 h-4" />History ({history.length})</button>
         </div>
       </nav>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
-        
-        {/* VIEW: STUDIO */}
         {view === 'studio' && (
-          <div className="animate-in fade-in duration-500">
-            {/* Studio Mode Toggle */}
+          <div className="animate-in fade-in slide-in-from-bottom-5 duration-500">
             <div className="flex justify-center mb-8">
-                <div className="bg-white border border-warm-taupe p-1.5 rounded-full flex shadow-sm gap-1 overflow-x-auto max-w-full">
-                    <button
-                        onClick={() => switchStudioMode('model')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap ${studioMode === 'model' ? 'bg-dusty-rose text-white shadow-md' : 'text-cool-slate hover:bg-warm-taupe/20'}`}
-                    >
-                        <Heart className="w-4 h-4" />
-                        Model Studio
-                    </button>
-                    <button
-                        onClick={() => switchStudioMode('product')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap ${studioMode === 'product' ? 'bg-sage-green text-white shadow-md' : 'text-cool-slate hover:bg-warm-taupe/20'}`}
-                    >
-                        <Tag className="w-4 h-4" />
-                        Product Studio
-                    </button>
-                    <button
-                        onClick={() => switchStudioMode('carousel')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap ${studioMode === 'carousel' ? 'bg-espresso text-white shadow-md' : 'text-cool-slate hover:bg-warm-taupe/20'}`}
-                    >
-                        <LayoutTemplate className="w-4 h-4" />
-                        IG Carousel Maker
-                    </button>
-                    <button
-                        onClick={() => switchStudioMode('copy')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap ${studioMode === 'copy' ? 'bg-[#9370DB] text-white shadow-md' : 'text-cool-slate hover:bg-warm-taupe/20'}`}
-                    >
-                        <Megaphone className="w-4 h-4" />
-                        Marketing AI
-                    </button>
+                <div className="bg-white border border-warm-taupe p-1.5 rounded-full flex gap-1 overflow-x-auto shadow-sm no-scrollbar">
+                    {['model', 'product', 'carousel', 'copy'].map((m) => (
+                        <button key={m} onClick={() => switchStudioMode(m as any)} className={`px-4 py-2 rounded-full text-xs md:text-sm font-bold transition-all whitespace-nowrap ${studioMode === m ? 'bg-dusty-rose text-white shadow-md' : 'text-cool-slate hover:bg-warm-taupe/20'}`}>
+                            {m === 'copy' ? 'MARKETING AI' : `${m.toUpperCase()} STUDIO`}
+                        </button>
+                    ))}
                 </div>
             </div>
 
-            {/* Hero / Intro */}
             <div className="text-center mb-12 max-w-2xl mx-auto space-y-4">
-              <h2 className="font-serif text-4xl md:text-5xl text-espresso mb-2">
-                {studioMode === 'model' ? 'Soft Life Visualization' : (studioMode === 'carousel' ? 'Instagram Carousel Suite' : (studioMode === 'copy' ? 'Marketing Command Center' : 'Luxury Product Studio'))}
+              <h2 className="font-serif text-4xl md:text-5xl text-espresso">
+                {studioMode === 'copy' ? 'Campaign Command Center' : `${studioMode.charAt(0).toUpperCase() + studioMode.slice(1)} Aesthetic Studio`}
               </h2>
-              <p className="text-cool-slate text-lg font-light">
-                {studioMode === 'model' 
-                    ? "Upload your portrait and customize your aesthetic. We'll style you in the luxurious, self-care aesthetic you deserve."
-                    : (studioMode === 'carousel' 
-                        ? "Generate a complete 5-slide Instagram carousel. Cohesive, on-brand, and ready to post with zero editing."
-                        : (studioMode === 'copy'
-                            ? "AI-Powered Social Media SEO & Copywriting. Trend research, hashtags, and persuasive scripts for the Farmasi US market."
-                            : "Generate high-end, commercial-grade product mockups. Perfect for Instagram campaigns and brand visuals.")
-                        )
-                }
+              <p className="text-cool-slate text-lg font-light italic">
+                {studioMode === 'model' ? "Refine your personal soft-life identity." : 
+                 studioMode === 'product' ? "Elevate your commercial product photography." : 
+                 studioMode === 'carousel' ? "Curate high-conversion Instagram feeds." : 
+                 "Research trends and generate viral marketing copy."}
               </p>
               {studioMode !== 'copy' && <ColorSwatch />}
             </div>
 
-            {/* Upload Section - Dynamic based on Mode */}
             {(results.length === 0 && !copyResult) && (
               <div className="max-w-2xl mx-auto space-y-8">
-                
-                {/* MODE: MARKETING COPY */}
                 {studioMode === 'copy' ? (
                      <div className="bg-white rounded-2xl p-8 shadow-md border border-warm-taupe/30 space-y-6">
                         <div className="space-y-4">
-                            <div>
-                                <label className="text-xs font-bold uppercase tracking-widest text-cool-slate mb-2 block">Product Name / Campaign Bundle</label>
-                                <input 
-                                    type="text"
-                                    value={marketingProduct}
-                                    onChange={(e) => setMarketingProduct(e.target.value)}
-                                    placeholder="e.g. Dr. C. Tuna Resurface Bundle or Nutriplus Collagen"
-                                    className="w-full bg-alabaster/50 border border-warm-taupe/50 rounded-xl p-4 text-base text-espresso placeholder:text-cool-slate/50 focus:outline-none focus:border-[#9370DB] focus:ring-1 focus:ring-[#9370DB]/50 transition-all"
-                                />
-                            </div>
-                            
-                            <div>
-                                <label className="text-xs font-bold uppercase tracking-widest text-cool-slate mb-2 block">Key Benefits / Context</label>
-                                <textarea
-                                    value={marketingContext}
-                                    onChange={(e) => setMarketingContext(e.target.value)}
-                                    placeholder="e.g. Anti-aging retinol alternative, vegan, good for sensitive skin. Launching this Friday with a 20% discount."
-                                    className="w-full bg-alabaster/50 border border-warm-taupe/50 rounded-xl p-4 text-base text-espresso placeholder:text-cool-slate/50 focus:outline-none focus:border-[#9370DB] focus:ring-1 focus:ring-[#9370DB]/50 transition-all resize-none h-32"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-xs font-bold uppercase tracking-widest text-cool-slate mb-2 block">Target Audience (Optional)</label>
-                                <input 
-                                    type="text"
-                                    value={marketingAudience}
-                                    onChange={(e) => setMarketingAudience(e.target.value)}
-                                    placeholder="e.g. Busy moms in their 30s who want glowy skin without downtime"
-                                    className="w-full bg-alabaster/50 border border-warm-taupe/50 rounded-xl p-4 text-base text-espresso placeholder:text-cool-slate/50 focus:outline-none focus:border-[#9370DB] focus:ring-1 focus:ring-[#9370DB]/50 transition-all"
-                                />
-                                <p className="text-[10px] text-cool-slate mt-2 ml-1">
-                                    *AI will automatically research Farmasi US demographics if left blank.
-                                </p>
-                            </div>
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-cool-slate block">Product Name</label>
+                            <input type="text" value={marketingProduct} onChange={(e) => setMarketingProduct(e.target.value)} placeholder="e.g. Nutriplus Collagen" className="w-full bg-alabaster border border-warm-taupe/30 rounded-xl p-4 text-sm focus:outline-none focus:border-dusty-rose transition-all" />
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-cool-slate block">Benefits & Campaign Context</label>
+                            <textarea value={marketingContext} onChange={(e) => setMarketingContext(e.target.value)} placeholder="Describe key benefits or sale details..." className="w-full bg-alabaster border border-warm-taupe/30 rounded-xl p-4 text-sm h-32 focus:outline-none focus:border-dusty-rose transition-all" />
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-cool-slate block">Target Audience</label>
+                            <input type="text" value={marketingAudience} onChange={(e) => setMarketingAudience(e.target.value)} placeholder="e.g. Modern moms interested in skincare" className="w-full bg-alabaster border border-warm-taupe/30 rounded-xl p-4 text-sm focus:outline-none focus:border-dusty-rose transition-all" />
                         </div>
                      </div>
-                ) : (
-                    // ... (Other modes upload UI preserved) ...
-                    studioMode === 'carousel' ? (
-                        <div className="space-y-6">
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {/* Upload 1: Model */}
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold uppercase tracking-widest text-cool-slate ml-1">Step 1: The Model</label>
-                                    <div 
-                                        className={`
-                                            relative border-2 border-dashed rounded-2xl p-6 text-center transition-all h-64 flex flex-col items-center justify-center
-                                            ${carouselModelPreview ? 'border-dusty-rose bg-white' : 'border-warm-taupe bg-oatmeal/20 hover:border-dusty-rose cursor-pointer'}
-                                        `}
-                                        onClick={() => !carouselModelPreview && carouselModelInputRef.current?.click()}
-                                    >
-                                        <input 
-                                            type="file" 
-                                            ref={carouselModelInputRef}
-                                            onChange={handleCarouselModelChange} 
-                                            className="hidden" 
-                                            accept="image/png, image/jpeg, image/webp"
-                                        />
-                                        {carouselModelPreview ? (
-                                            <div className="relative w-full h-full">
-                                                <img src={carouselModelPreview} alt="Model" className="w-full h-full object-cover rounded-xl" />
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); setCarouselModelPreview(null); setCarouselModelFile(null); setCarouselModelBase64(null); }}
-                                                    className="absolute -top-2 -right-2 bg-espresso text-white p-1.5 rounded-full hover:bg-red-500"
-                                                >
-                                                    <X className="w-3 h-3" />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <div className="bg-white p-3 rounded-full mb-3"><Heart className="w-6 h-6 text-dusty-rose" /></div>
-                                                <p className="text-sm font-bold text-espresso">Upload Model</p>
-                                            </>
-                                        )}
-                                    </div>
+                ) : studioMode === 'carousel' ? (
+                    <div className="space-y-6">
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Model Upload */}
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold uppercase tracking-widest text-cool-slate ml-2">Carousel Model</label>
+                                <div className="h-64 border-2 border-dashed border-warm-taupe rounded-2xl flex flex-col items-center justify-center p-4 cursor-pointer overflow-hidden bg-oatmeal/20 transition-all hover:bg-oatmeal/30" onClick={() => carouselModelInputRef.current?.click()}>
+                                    <input type="file" ref={carouselModelInputRef} onChange={handleCarouselModelChange} className="hidden" accept="image/*" />
+                                    {carouselModelPreview ? (
+                                        <div className="relative w-full h-full group">
+                                            <img src={carouselModelPreview} className="w-full h-full object-cover rounded-xl" />
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">Change Image</div>
+                                        </div>
+                                    ) : <div className="text-center opacity-60"><Camera className="mx-auto text-dusty-rose mb-2" /><p className="text-xs font-bold">Upload Model</p></div>}
                                 </div>
-    
-                                {/* Upload 2: Product */}
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold uppercase tracking-widest text-cool-slate ml-1">Step 2: The Product</label>
-                                    <div 
-                                        className={`
-                                            relative border-2 border-dashed rounded-2xl p-6 text-center transition-all h-64 flex flex-col items-center justify-center
-                                            ${carouselProductPreview ? 'border-sage-green bg-white' : 'border-warm-taupe bg-oatmeal/20 hover:border-sage-green cursor-pointer'}
-                                        `}
-                                        onClick={() => !carouselProductPreview && carouselProductInputRef.current?.click()}
-                                    >
-                                        <input 
-                                            type="file" 
-                                            ref={carouselProductInputRef}
-                                            onChange={handleCarouselProductChange} 
-                                            className="hidden" 
-                                            accept="image/png, image/jpeg, image/webp"
-                                        />
-                                        {carouselProductPreview ? (
-                                            <div className="relative w-full h-full">
-                                                <img src={carouselProductPreview} alt="Product" className="w-full h-full object-cover rounded-xl" />
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); setCarouselProductPreview(null); setCarouselProductFile(null); setCarouselProductBase64(null); }}
-                                                    className="absolute -top-2 -right-2 bg-espresso text-white p-1.5 rounded-full hover:bg-red-500"
-                                                >
-                                                    <X className="w-3 h-3" />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <div className="bg-white p-3 rounded-full mb-3"><Tag className="w-6 h-6 text-sage-green" /></div>
-                                                <p className="text-sm font-bold text-espresso">Upload Product</p>
-                                            </>
-                                        )}
-                                    </div>
+                            </div>
+
+                            {/* Multi-Product Upload */}
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold uppercase tracking-widest text-cool-slate ml-2">Carousel Products (Kit)</label>
+                                <div className="h-64 border-2 border-dashed border-warm-taupe rounded-2xl flex flex-col p-4 bg-oatmeal/20 transition-all hover:bg-oatmeal/30 overflow-y-auto no-scrollbar">
+                                    <input type="file" ref={carouselProductInputRef} onChange={handleCarouselProductChange} className="hidden" accept="image/*" multiple />
+                                    
+                                    {carouselProductPreviews.length > 0 ? (
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {carouselProductPreviews.map((p, i) => (
+                                                <div key={i} className="relative aspect-square">
+                                                    <img src={p} className="w-full h-full object-cover rounded-lg border-2 border-white shadow-sm" />
+                                                    <button onClick={(e) => { e.stopPropagation(); removeProductFromCarousel(i); }} className="absolute -top-1 -right-1 bg-espresso text-white p-1 rounded-full shadow-md hover:bg-red-500 transition-all">
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            <button onClick={() => carouselProductInputRef.current?.click()} className="aspect-square rounded-lg border-2 border-dashed border-warm-taupe flex flex-col items-center justify-center bg-white/50 hover:bg-white transition-all">
+                                                <Plus className="w-5 h-5 text-sage-green" />
+                                                <span className="text-[10px] font-bold mt-1 uppercase">Add</span>
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex-1 flex flex-col items-center justify-center cursor-pointer" onClick={() => carouselProductInputRef.current?.click()}>
+                                            <Tag className="mx-auto text-sage-green mb-2" />
+                                            <p className="text-xs font-bold opacity-60">Upload Product Kit</p>
+                                        </div>
+                                    )}
                                 </div>
-                             </div>
-                             
-                             {/* Step 3: Theme Color Selection */}
-                             {(carouselModelPreview && carouselProductPreview) && (
-                                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-warm-taupe/30 animate-in fade-in slide-in-from-bottom-5">
-                                     <div className="flex items-center gap-2 mb-4 pb-2 border-b border-warm-taupe/20">
-                                         <Palette className="w-4 h-4 text-espresso" />
-                                         <h3 className="font-bold text-sm text-espresso uppercase tracking-widest">Step 3: Select Main Theme Color</h3>
-                                     </div>
-                                     <div className="flex flex-wrap gap-4 justify-center">
-                                         {COLORS.map((color) => (
-                                             <button
-                                                key={color.hex}
-                                                onClick={() => setCarouselThemeColor(color.hex)}
-                                                className={`
-                                                    group relative w-12 h-12 rounded-full border-2 transition-all duration-300
-                                                    ${carouselThemeColor === color.hex ? 'scale-110 ring-2 ring-offset-2 ring-espresso border-white' : 'border-transparent hover:scale-105'}
-                                                `}
-                                                style={{ backgroundColor: color.hex }}
-                                                title={color.name}
-                                             >
-                                                 {carouselThemeColor === color.hex && (
-                                                     <div className="absolute inset-0 flex items-center justify-center">
-                                                         <div className="w-2 h-2 bg-white rounded-full"></div>
-                                                     </div>
-                                                 )}
-                                             </button>
-                                         ))}
-                                     </div>
-                                     <p className="text-center text-xs text-cool-slate mt-4">
-                                         {carouselThemeColor 
-                                            ? `Selected: ${COLORS.find(c => c.hex === carouselThemeColor)?.name}` 
-                                            : "Please select a brand color to unify the carousel."}
-                                     </p>
+                            </div>
+                         </div>
+                         
+                         {(carouselModelPreview && carouselProductPreviews.length > 0) && (
+                             <div className="bg-white rounded-2xl p-6 border border-warm-taupe/30 animate-in fade-in">
+                                 <h3 className="font-bold text-[10px] text-espresso uppercase tracking-widest mb-4 flex items-center gap-2"><Palette className="w-3 h-3" /> Brand Theme Color</h3>
+                                 <div className="flex flex-wrap gap-3 justify-center">
+                                     {COLORS.map((color) => (
+                                         <button key={color.hex} onClick={() => setCarouselThemeColor(color.hex)} className={`w-10 h-10 rounded-full border-2 transition-transform ${carouselThemeColor === color.hex ? 'ring-2 ring-espresso border-white scale-110 shadow-lg' : 'border-transparent hover:scale-105'}`} style={{ backgroundColor: color.hex }} title={color.name} />
+                                     ))}
                                  </div>
-                             )}
+                             </div>
+                         )}
+                    </div>
+                ) : studioMode === 'product' ? (
+                    <div className="space-y-6">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-cool-slate ml-4">Product Collection (Up to 5)</label>
+                        <div className="min-h-64 border-2 border-dashed border-warm-taupe rounded-[2rem] flex flex-col p-8 bg-oatmeal/20 transition-all hover:bg-oatmeal/30">
+                            <input type="file" ref={productStudioInputRef} onChange={handleProductStudioChange} className="hidden" accept="image/*" multiple />
+                            
+                            {productPreviews.length > 0 ? (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                                    {productPreviews.map((p, i) => (
+                                        <div key={i} className="relative aspect-[3/4] group">
+                                            <img src={p} className="w-full h-full object-cover rounded-xl border-4 border-white shadow-md" />
+                                            <button onClick={(e) => { e.stopPropagation(); removeProductFromStudio(i); }} className="absolute -top-2 -right-2 bg-espresso text-white p-1.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500">
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {productPreviews.length < 5 && (
+                                        <button onClick={() => productStudioInputRef.current?.click()} className="aspect-[3/4] rounded-xl border-2 border-dashed border-warm-taupe flex flex-col items-center justify-center bg-white/50 hover:bg-white transition-all">
+                                            <Plus className="w-6 h-6 text-sage-green mb-2" />
+                                            <span className="text-xs font-bold uppercase tracking-widest">Add Product</span>
+                                        </button>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="flex-1 flex flex-col items-center justify-center cursor-pointer" onClick={() => productStudioInputRef.current?.click()}>
+                                    <ShoppingBag className="mx-auto text-sage-green w-16 h-16 mb-4 opacity-40" />
+                                    <h3 className="font-serif text-xl text-espresso">Upload Your Products</h3>
+                                    <p className="text-sm text-cool-slate mt-2">Combine multiple products into high-end kit shots.</p>
+                                </div>
+                            )}
                         </div>
-                    ) : (
-                        // STANDARD SINGLE UPLOAD MODE
-                        <div 
-                        className={`
-                            relative group border-2 border-dashed rounded-[2rem] p-12 text-center transition-all duration-300
-                            ${previewUrl ? (studioMode === 'product' ? 'border-sage-green bg-white' : 'border-dusty-rose bg-white') : 'border-warm-taupe bg-oatmeal/20 hover:bg-oatmeal/40 hover:border-sage-green'}
-                        `}
-                        onDragOver={handleDragOver}
-                        onDrop={handleDrop}
-                        >
-                        <input 
-                            type="file" 
-                            ref={fileInputRef}
-                            onChange={handleFileChange} 
-                            className="hidden" 
-                            accept="image/png, image/jpeg, image/webp"
-                        />
-                        
+                    </div>
+                ) : (
+                    <div className="h-64 border-2 border-dashed border-warm-taupe rounded-[2rem] flex flex-col items-center justify-center p-8 cursor-pointer overflow-hidden bg-oatmeal/20 transition-all hover:bg-oatmeal/30 shadow-inner" onClick={() => fileInputRef.current?.click()}>
+                        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
                         {previewUrl ? (
-                            <div className="relative">
-                            <img 
-                                src={previewUrl} 
-                                alt="Preview" 
-                                className="w-48 h-64 object-cover rounded-xl mx-auto shadow-xl border-4 border-white"
-                            />
-                            <button 
-                                onClick={() => {
-                                    setFile(null);
-                                    setPreviewUrl(null);
-                                    setResults([]);
-                                    setOriginalBase64(null);
-                                }}
-                                className="absolute -top-3 -right-3 bg-espresso text-white p-2 rounded-full hover:bg-red-500 transition-colors"
-                            >
-                                <RefreshCw className="w-4 h-4" />
-                            </button>
+                            <div className="relative group">
+                                <img src={previewUrl} className="w-48 h-full object-cover rounded-xl shadow-2xl border-4 border-white" />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white font-bold text-xs rounded-xl transition-opacity">Change Photo</div>
                             </div>
                         ) : (
-                            <div 
-                                className="cursor-pointer space-y-4"
-                                onClick={() => fileInputRef.current?.click()}
-                            >
-                            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto shadow-md group-hover:scale-110 transition-transform">
-                                {studioMode === 'model' ? <Camera className="w-10 h-10 text-dusty-rose" /> : <ShoppingBag className="w-10 h-10 text-sage-green" />}
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-serif text-espresso">
-                                    {studioMode === 'model' ? 'Upload Portrait' : 'Upload Product'}
-                                </h3>
-                                <p className="text-sm text-cool-slate mt-1">Drag & drop or click to browse</p>
-                            </div>
+                            <div className="text-center">
+                                <Camera className="mx-auto text-dusty-rose w-12 h-12 mb-2 opacity-40" />
+                                <h3 className="font-serif text-xl text-espresso">Upload Portrait</h3>
+                                <p className="text-sm text-cool-slate mt-2">Selfie or photoshoot portrait</p>
                             </div>
                         )}
-                        </div>
-                    )
+                    </div>
                 )}
 
-
-                {/* Customization Controls (Only for Standard Modes) */}
-                {(studioMode !== 'carousel' && studioMode !== 'copy' && file) && (
-                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-warm-taupe/30 space-y-6 animate-in fade-in slide-in-from-bottom-5 duration-500">
-                    {/* ... (Existing customization code) ... */}
-                    <div className="flex items-center justify-between border-b border-warm-taupe/20 pb-4">
-                      <h3 className="font-serif text-lg text-espresso flex items-center gap-2">
-                        <Palette className="w-4 h-4 text-dusty-rose" />
-                        Studio Settings
-                      </h3>
-                      <button onClick={resetSelection} className="text-xs text-sage-green hover:underline">Reset</button>
-                    </div>
-
-                    {/* Generation Type Toggle */}
-                    <div>
-                        <label className="text-xs font-bold uppercase tracking-widest text-cool-slate mb-3 block">Generation Mode</label>
-                        <div className="flex gap-4">
-                            <label className={`
-                                flex-1 cursor-pointer rounded-xl p-4 border transition-all duration-300
-                                ${generationType === 'creative' ? 'bg-alabaster border-dusty-rose ring-1 ring-dusty-rose' : 'border-warm-taupe/40 hover:bg-alabaster'}
-                            `}>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <input 
-                                        type="radio" 
-                                        name="genType" 
-                                        className="hidden" 
-                                        checked={generationType === 'creative'} 
-                                        onChange={() => setGenerationType('creative')}
-                                    />
-                                    <Sparkles className={`w-5 h-5 ${generationType === 'creative' ? 'text-dusty-rose' : 'text-cool-slate'}`} />
-                                    <span className="font-bold text-sm text-espresso">Creative Styling</span>
-                                </div>
-                                <p className="text-xs text-cool-slate leading-relaxed">
-                                    Generates 5 variations with different high-fashion styles and luxury scenarios. Best for exploring new looks.
-                                </p>
-                            </label>
-
-                            <label className={`
-                                flex-1 cursor-pointer rounded-xl p-4 border transition-all duration-300
-                                ${generationType === 'directors' ? 'bg-alabaster border-sage-green ring-1 ring-sage-green' : 'border-warm-taupe/40 hover:bg-alabaster'}
-                            `}>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <input 
-                                        type="radio" 
-                                        name="genType" 
-                                        className="hidden" 
-                                        checked={generationType === 'directors'} 
-                                        onChange={() => setGenerationType('directors')}
-                                    />
-                                    <Clapperboard className={`w-5 h-5 ${generationType === 'directors' ? 'text-sage-green' : 'text-cool-slate'}`} />
-                                    <span className="font-bold text-sm text-espresso">Director's Cut</span>
-                                </div>
-                                <p className="text-xs text-cool-slate leading-relaxed">
-                                    Generates professional camera angles (including direct eye contact) of your <b>exact upload</b>. Preserves details, outfit, and background with 0 changes.
-                                </p>
-                            </label>
+                {(studioMode !== 'copy' && (file || productFiles.length > 0 || carouselModelFile)) && (
+                  <div className="bg-white rounded-2xl p-8 shadow-sm border border-warm-taupe/30 space-y-8 animate-in fade-in slide-in-from-top-2 duration-500">
+                    {/* Toggle for Model/Product specific sub-modes */}
+                    {(studioMode === 'model' || studioMode === 'product') && (
+                        <div>
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-cool-slate mb-4 block">Generation Mode</label>
+                            <div className="flex gap-4">
+                                {['creative', 'directors'].map(t => (
+                                    <button key={t} onClick={() => setGenerationType(t as any)} className={`flex-1 p-4 border rounded-xl font-bold text-xs md:text-sm transition-all flex items-center justify-center gap-2 ${generationType === t ? 'border-dusty-rose bg-alabaster ring-1 ring-dusty-rose text-espresso shadow-md' : 'border-warm-taupe/30 text-cool-slate hover:bg-alabaster/50'}`}>
+                                        {t === 'creative' ? <Sparkles className="w-4 h-4" /> : <Clapperboard className="w-4 h-4" />}
+                                        {t.toUpperCase()} VARIATIONS
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                    </div>
+                    )}
+
+                    {generationType === 'creative' && studioMode !== 'carousel' && (
+                        <div className="space-y-6">
+                            <div>
+                                <label className="text-[10px] font-bold uppercase tracking-widest text-cool-slate mb-3 block">Style Aesthetic</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {STYLES.map(s => (
+                                        <button key={s.id} onClick={() => setSelectedStyle(s.id)} className={`px-4 py-1.5 rounded-full text-[10px] md:text-xs font-bold border transition-all ${selectedStyle === s.id ? 'bg-espresso text-white border-espresso shadow-md' : 'bg-alabaster border-warm-taupe/30 text-cool-slate hover:border-dusty-rose'}`}>
+                                            {s.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold uppercase tracking-widest text-cool-slate mb-3 block">Luxury Scenery</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {SCENERIES.map(s => (
+                                        <button key={s.id} onClick={() => setSelectedScenery(s.id)} className={`px-4 py-1.5 rounded-full text-[10px] md:text-xs font-bold border transition-all ${selectedScenery === s.id ? 'bg-sage-green text-white border-sage-green shadow-md' : 'bg-alabaster border-warm-taupe/30 text-cool-slate hover:border-sage-green'}`}>
+                                            {s.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold uppercase tracking-widest text-cool-slate mb-3 block">Custom Directives (Optional)</label>
+                                <textarea value={customPrompt} onChange={(e) => setCustomPrompt(e.target.value)} placeholder="e.g. Holding a pink tulip, soft bokeh lighting, extremely high detail..." className="w-full bg-alabaster border border-warm-taupe/30 rounded-xl p-4 text-sm h-24 focus:outline-none focus:border-dusty-rose transition-all resize-none" />
+                            </div>
+                        </div>
+                    )}
                     
-                    {/* Creative Mode Settings */}
-                    {generationType === 'creative' && (
-                        <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-300">
-                        {/* Style Selector */}
-                        <div>
-                            <label className="text-xs font-bold uppercase tracking-widest text-cool-slate mb-2 block">Style Explorer</label>
-                            <div className="flex flex-wrap gap-2">
-                            {STYLES.map(style => (
-                                <button
-                                key={style.id}
-                                onClick={() => setSelectedStyle(style.id === selectedStyle ? undefined : style.id)}
-                                className={`
-                                    px-4 py-2 rounded-full text-sm transition-all duration-200 border
-                                    ${selectedStyle === style.id 
-                                    ? 'bg-espresso text-white border-espresso shadow-md' 
-                                    : 'bg-alabaster text-espresso border-warm-taupe/50 hover:border-dusty-rose hover:bg-white'}
-                                `}
-                                >
-                                {style.label}
-                                </button>
-                            ))}
-                            </div>
-                        </div>
-
-                        {/* Scenery Selector */}
-                        <div>
-                            <label className="text-xs font-bold uppercase tracking-widest text-cool-slate mb-2 block">Scenery Customizer</label>
-                            <div className="flex flex-wrap gap-2">
-                            {SCENERIES.map(scenery => (
-                                <button
-                                key={scenery.id}
-                                onClick={() => setSelectedScenery(scenery.id === selectedScenery ? undefined : scenery.id)}
-                                className={`
-                                    px-4 py-2 rounded-full text-sm transition-all duration-200 border
-                                    ${selectedScenery === scenery.id 
-                                    ? 'bg-dusty-rose text-white border-dusty-rose shadow-md' 
-                                    : 'bg-alabaster text-espresso border-warm-taupe/50 hover:border-dusty-rose hover:bg-white'}
-                                `}
-                                >
-                                {scenery.label}
-                                </button>
-                            ))}
-                            </div>
-                        </div>
-
-                        {/* Custom Vibe Input */}
-                        <div>
-                            <label className="text-xs font-bold uppercase tracking-widest text-cool-slate mb-2 flex items-center gap-2">
-                                <MessageSquare className="w-3 h-3" />
-                                Custom Vibe
-                            </label>
-                            <textarea
-                                value={customPrompt}
-                                onChange={(e) => setCustomPrompt(e.target.value)}
-                                placeholder="e.g., Wearing a silk white dress at a sunset vineyard in Tuscany..."
-                                className="w-full bg-alabaster/50 border border-warm-taupe/50 rounded-xl p-4 text-sm text-espresso placeholder:text-cool-slate/70 focus:outline-none focus:border-dusty-rose focus:ring-1 focus:ring-dusty-rose/50 transition-all resize-none h-24"
-                            />
-                        </div>
+                    {generationType === 'directors' && (
+                        <div className="p-4 bg-alabaster rounded-xl border border-warm-taupe/20 text-center">
+                            <p className="text-xs text-cool-slate italic">"Director's Cut will generate 5 professional camera angles of your uploaded source, preserving all details 100%."</p>
                         </div>
                     )}
                   </div>
                 )}
 
-                {/* Actions */}
-                <div className="flex justify-center pt-4">
+                <div className="flex justify-center pt-6">
                   {status === GenerationStatus.GENERATING || status === GenerationStatus.UPLOADING ? (
-                    <div className="flex flex-col items-center space-y-4">
-                        <div className={`w-16 h-16 border-4 border-oatmeal rounded-full animate-spin ${studioMode === 'product' ? 'border-t-sage-green' : (studioMode === 'carousel' ? 'border-t-espresso' : (studioMode === 'copy' ? 'border-t-[#9370DB]' : 'border-t-dusty-rose'))}`}></div>
-                        <p className="font-serif italic text-sage-green animate-pulse">
-                            {studioMode === 'carousel' 
-                                ? 'Curating Instagram feed...' 
-                                : (studioMode === 'copy'
-                                    ? 'Researching trends & writing copy...'
-                                    : (generationType === 'directors' ? 'Filming director\'s cut...' : `Curating your ${studioMode} aesthetic...`)
-                                )
-                            }
-                        </p>
+                    <div className="text-center space-y-4 animate-pulse">
+                        <div className="w-16 h-16 border-4 border-dusty-rose border-t-transparent rounded-full animate-spin mx-auto"></div>
+                        <p className="font-serif italic text-espresso text-lg">Curating Your Aesthetic...</p>
+                        <p className="text-[10px] uppercase tracking-widest text-sage-green font-bold">Luxe Aura Engine Working</p>
                     </div>
                   ) : (
-                    <Button 
-                        onClick={handleGenerate} 
-                        disabled={studioMode === 'carousel' ? (!carouselModelFile || !carouselProductFile || !carouselThemeColor) : (studioMode === 'copy' ? (!marketingProduct || !marketingContext) : (!file))}
-                        className={`w-full md:w-auto min-w-[200px] ${studioMode === 'product' ? 'bg-sage-green hover:bg-[#5d6854]' : (studioMode === 'carousel' ? 'bg-espresso hover:bg-black' : (studioMode === 'copy' ? 'bg-[#9370DB] hover:bg-[#7B68EE]' : ''))}`}
-                    >
-                        {status === GenerationStatus.ERROR 
-                            ? 'Try Again' 
-                            : (studioMode === 'carousel' 
-                                ? 'Generate IG Carousel' 
-                                : (studioMode === 'copy' 
-                                    ? 'Generate Marketing Assets'
-                                    : (generationType === 'directors' ? 'Generate Director\'s Cut' : 'Generate Styles')
-                                  )
-                              )
-                        }
+                    <Button onClick={handleGenerate} className="w-full md:w-auto min-w-[280px] shadow-xl hover:scale-105 transition-transform" variant={studioMode === 'product' ? 'secondary' : 'primary'}>
+                        {status === GenerationStatus.ERROR ? 'RETRY GENERATION' : `GENERATE ${studioMode.toUpperCase()} ASSETS`}
                     </Button>
                   )}
                 </div>
-                
-                {status === GenerationStatus.ERROR && (
-                    <p className="text-red-500 text-center mt-4 text-sm">
-                        Something went wrong. Please check your API key or try a different photo.
-                    </p>
-                )}
+                {status === GenerationStatus.ERROR && <p className="text-red-400 text-center text-xs font-bold">Generation failed. Please check your image or connection.</p>}
               </div>
             )}
 
-            {/* Results Display */}
-            {copyResult && studioMode === 'copy' && (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-10 duration-700 pb-12">
-                     <div className="flex flex-col md:flex-row justify-between items-end border-b border-warm-taupe pb-4 gap-4">
-                        <div>
-                            <h3 className="font-serif text-3xl text-espresso">Marketing Campaign</h3>
-                            <p className="text-sage-green font-light italic">
-                                Trend-researched, SEO-optimized, and ready to post.
-                            </p>
+            {copyResult && (
+                <div className="space-y-8 pb-12 animate-in fade-in slide-in-from-bottom-10 duration-700">
+                    <div className="flex justify-between items-center border-b border-warm-taupe/30 pb-4">
+                        <div className="space-y-2">
+                          <h3 className="font-serif text-2xl text-espresso">Marketing Campaign: {marketingProduct}</h3>
+                          {copyResult.groundingUrls && copyResult.groundingUrls.length > 0 && (
+                            <div className="flex flex-wrap gap-3 items-center">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-cool-slate">Sources:</span>
+                              {copyResult.groundingUrls.map((source, i) => (
+                                <a key={i} href={source.uri} target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold text-dusty-rose hover:underline flex items-center gap-1">
+                                  <ExternalLink className="w-3 h-3" /> {source.title || 'Source'}
+                                </a>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <div className="flex gap-3">
-                            <Button onClick={handleGenerate} className="text-sm py-2 px-6">
-                            <RefreshCw className="w-4 h-4 mr-2 inline" />
-                            Regenerate
-                            </Button>
-                            <Button variant="outline" onClick={startNewSession} className="text-sm py-2 px-6">
-                            New Session
-                            </Button>
-                        </div>
+                        <Button variant="outline" onClick={startNewSession} className="text-xs py-1.5">New Session</Button>
                     </div>
-
-                    <div className="grid grid-cols-1 gap-6">
-                        {renderCopySection("Email Marketing Strategy", copyResult.emailContent, 'email')}
-                        {renderCopySection("Social Media (TikTok/IG/Reels)", copyResult.socialContent, 'social')}
-                        {renderCopySection("High-Conversion Sales Page", copyResult.salesPageContent, 'sales')}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {renderCopySection("Email Strategy", copyResult.emailContent, 'email')}
+                        {renderCopySection("Social Scripts", copyResult.socialContent, 'social')}
+                        {renderCopySection("Sales Copy", copyResult.salesPageContent, 'sales')}
                     </div>
                 </div>
             )}
 
-            {/* Image Results Gallery (Current Session) */}
-            {(results.length > 0 && studioMode !== 'copy') && (
+            {results.length > 0 && (
               <div className="space-y-12 animate-in fade-in slide-in-from-bottom-10 duration-700">
-                <div className="flex flex-col md:flex-row justify-between items-end border-b border-warm-taupe pb-4 gap-4">
-                  <div>
-                    <h3 className="font-serif text-3xl text-espresso">Studio Workflow</h3>
-                    <p className="text-sage-green font-light italic">
-                        {studioMode === 'carousel' 
-                            ? 'Your 5-slide carousel is ready. Consistent. Cohesive. On Brand.'
-                            : `Select an image to expand via Director's Cut ${studioMode === 'model' ? 'or add products' : ''}.`
-                        }
-                    </p>
-                  </div>
-                  <div className="flex gap-3">
-                    <Button onClick={handleGenerate} className="text-sm py-2 px-6">
-                      <RefreshCw className="w-4 h-4 mr-2 inline" />
-                      Regenerate
-                    </Button>
-                    <Button variant="outline" onClick={startNewSession} className="text-sm py-2 px-6">
-                      New Session
-                    </Button>
-                  </div>
+                <div className="flex flex-col md:flex-row justify-between items-end border-b border-warm-taupe/30 pb-4 gap-4">
+                    <div>
+                        <h3 className="font-serif text-3xl text-espresso">Studio Workflow</h3>
+                        <p className="text-sage-green italic text-sm">Select an image to expand with Director's Cut or create mockups.</p>
+                    </div>
+                    <div className="flex gap-4">
+                        <Button onClick={handleGenerate} className="text-xs py-2 px-6 flex items-center gap-2"><RefreshCw className="w-3 h-3" /> Regenerate</Button>
+                        <Button variant="outline" onClick={startNewSession} className="text-xs py-2 px-6">New Session</Button>
+                    </div>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pb-10">
-                  {results.map(img => renderImageCard(img))}
-                </div>
-                
-                <div className="text-center pt-8">
-                    <p className="text-cool-slate text-sm">
-                        View your full session history in <span className="text-dusty-rose font-bold cursor-pointer underline" onClick={() => setView('gallery')}>Collection</span>.
-                    </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 pb-10">
+                    {results.map(renderImageCard)}
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* VIEW: GALLERY */}
         {view === 'gallery' && (
-           <div className="animate-in fade-in duration-500 min-h-[60vh]">
-              <div className="flex flex-col md:flex-row justify-between items-end mb-8 border-b border-warm-taupe/30 pb-4">
+           <div className="min-h-[60vh] animate-in fade-in duration-500">
+              <div className="flex justify-between items-end mb-10 border-b border-warm-taupe/30 pb-4">
                   <div>
-                      <h2 className="font-serif text-3xl md:text-4xl text-espresso">Session Collection</h2>
-                      <p className="text-sage-green mt-2 font-light">
-                        Temporary gallery. Limited to 20 recent items. Clears on session end.
-                      </p>
+                      <h2 className="font-serif text-4xl text-espresso">Session History</h2>
+                      <p className="text-xs text-cool-slate mt-1 uppercase tracking-widest">Recent 25 items saved in local browser</p>
                   </div>
-                  {history.length > 0 && (
-                      <button 
-                        onClick={clearHistory}
-                        className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1 mt-4 md:mt-0"
-                      >
-                        <Trash2 className="w-3 h-3" /> Clear History
-                      </button>
-                  )}
+                  <button onClick={clearHistory} className="text-[10px] text-red-400 font-bold uppercase hover:text-red-600 transition-colors flex items-center gap-1"><Trash2 className="w-3 h-3" /> Clear All</button>
               </div>
-
               {history.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
-                      <History className="w-16 h-16 text-warm-taupe mb-4" />
-                      <p className="text-xl font-serif text-espresso">No images in session</p>
-                      <p className="text-sm text-cool-slate mb-6">Start creating in the Studio.</p>
-                      <Button onClick={() => setView('studio')}>Go to Studio</Button>
+                  <div className="text-center py-32 flex flex-col items-center opacity-40">
+                      <History className="w-16 h-16 mb-4" />
+                      <p className="font-serif text-2xl italic">Your collection is empty.</p>
+                      <Button variant="outline" onClick={() => setView('studio')} className="mt-6">Go to Studio</Button>
                   </div>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                    {history.map(img => renderImageCard(img))}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                    {history.map(renderImageCard)}
                 </div>
               )}
            </div>
         )}
-
       </main>
 
-      {/* Footer */}
-      <footer className="text-center border-t border-warm-taupe/30 pt-10 pb-6 mt-12">
-        <p className="font-serif text-2xl italic text-almond-buff mb-4">
-          "Romanticize your life."
-        </p>
-        <p className="text-xs text-cool-slate uppercase tracking-widest">
-          Luxe Aura AI • Powered by Gemini
-        </p>
+      <footer className="text-center py-20 border-t border-warm-taupe/20 opacity-60">
+        <p className="font-serif italic text-2xl text-almond-buff mb-4">"Live beautifully. Brand intentionally."</p>
+        <p className="text-[10px] uppercase tracking-widest font-bold">Luxe Aura AI • Soft Life Aesthetic Engine</p>
       </footer>
 
-      {/* LIGHTBOX OVERLAY */}
       {lightboxImage && (
-        <div className="fixed inset-0 z-[100] bg-alabaster/95 backdrop-blur-xl flex flex-col animate-in fade-in duration-300">
-            {/* Close Button */}
-            <button 
-                onClick={() => setLightboxImage(null)}
-                className="absolute top-6 right-6 p-2 bg-espresso/10 hover:bg-espresso/20 rounded-full text-espresso transition-colors z-50"
-            >
-                <X className="w-8 h-8" />
-            </button>
-
-            {/* Image Container */}
-            <div className="flex-1 flex items-center justify-center p-8 relative group w-full h-full">
-                <img 
-                    src={lightboxImage.url} 
-                    alt="Full Screen" 
-                    className="max-h-full max-w-full object-contain shadow-2xl rounded-lg"
-                />
+        <div className="fixed inset-0 z-[100] bg-alabaster/95 backdrop-blur-xl flex flex-col p-4 md:p-8 animate-in fade-in duration-300">
+            <button onClick={() => setLightboxImage(null)} className="absolute top-6 right-6 p-3 bg-espresso/10 hover:bg-espresso/20 rounded-full transition-colors z-50"><X className="w-8 h-8" /></button>
+            <div className="flex-1 flex items-center justify-center relative group max-w-5xl mx-auto w-full">
+                <img src={lightboxImage.url} className="max-h-full max-w-full object-contain shadow-2xl rounded-2xl border-4 border-white" />
                 
-                {/* Floating Action Bar (Bottom) */}
-                <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md px-8 py-4 rounded-full shadow-2xl border border-warm-taupe/20 flex items-center gap-6 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-4 group-hover:translate-y-0">
-                    <button 
-                        onClick={() => handleDownload(lightboxImage.url, lightboxImage.id)}
-                        className="flex flex-col items-center gap-1 text-espresso hover:text-dusty-rose transition-colors"
-                    >
-                        <div className="p-2 bg-warm-taupe/20 rounded-full"><Download className="w-5 h-5" /></div>
-                        <span className="text-[10px] uppercase font-bold tracking-widest">Save</span>
+                <div className="absolute bottom-6 md:bottom-12 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md px-6 md:px-10 py-4 md:py-5 rounded-full shadow-2xl border border-warm-taupe/20 flex items-center gap-4 md:gap-8 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-4 group-hover:translate-y-0">
+                    <button onClick={() => handleDownload(lightboxImage.url, lightboxImage.id)} className="flex flex-col items-center gap-1 text-espresso hover:text-dusty-rose transition-colors">
+                        <Download className="w-6 h-6" />
+                        <span className="text-[9px] font-bold uppercase tracking-widest">SAVE</span>
                     </button>
                     
-                    {/* Context Actions - Conditionally Rendered */}
-                    {originalBase64 && studioMode !== 'carousel' && (
-                        <>
-                            <div className="w-px h-8 bg-warm-taupe/50"></div>
-                            
-                            <button 
-                                onClick={() => handleDirectorCut(lightboxImage)}
-                                className="flex flex-col items-center gap-1 text-espresso hover:text-sage-green transition-colors"
-                            >
-                                <div className="p-2 bg-warm-taupe/20 rounded-full"><Video className="w-5 h-5" /></div>
-                                <span className="text-[10px] uppercase font-bold tracking-widest">Director's Cut</span>
-                            </button>
+                    <div className="w-px h-8 bg-warm-taupe/30"></div>
+                    
+                    {lightboxImage.videoPrompt && (
+                        <button onClick={() => copyVideoPrompt(lightboxImage.videoPrompt!)} className="flex flex-col items-center gap-1 text-purple-600 hover:text-purple-800 transition-colors">
+                            {videoPromptCopied ? <Check className="w-6 h-6 text-green-500" /> : <FileVideo className="w-6 h-6" />}
+                            <span className="text-[9px] font-bold uppercase tracking-widest">VEO PROMPT</span>
+                        </button>
+                    )}
+                    
+                    {/* Reshoot Angle Logic */}
+                    <div className="w-px h-8 bg-warm-taupe/30"></div>
+                    <button onClick={() => handleDirectorCut(lightboxImage)} className="flex flex-col items-center gap-1 text-sage-green hover:text-espresso transition-colors">
+                        <Video className="w-6 h-6" />
+                        <span className="text-[9px] font-bold uppercase tracking-widest">RESHOOT</span>
+                    </button>
 
-                            {lightboxImage.category === 'avatar' && (
-                                <button 
-                                    onClick={() => triggerProductUpload(lightboxImage)}
-                                    className="flex flex-col items-center gap-1 text-espresso hover:text-almond-buff transition-colors"
-                                >
-                                    <div className="p-2 bg-warm-taupe/20 rounded-full"><ShoppingBag className="w-5 h-5" /></div>
-                                    <span className="text-[10px] uppercase font-bold tracking-widest">Add Product</span>
-                                </button>
-                            )}
+                    {/* Mockup Logic */}
+                    {lightboxImage.category === 'avatar' && (
+                        <>
+                            <div className="w-px h-8 bg-warm-taupe/30"></div>
+                            <button onClick={() => triggerProductUpload(lightboxImage)} className="flex flex-col items-center gap-1 text-almond-buff hover:text-espresso transition-colors">
+                                <ShoppingBag className="w-6 h-6" />
+                                <span className="text-[9px] font-bold uppercase tracking-widest">MOCKUP</span>
+                            </button>
                         </>
                     )}
-
-                    <div className="w-px h-8 bg-warm-taupe/50"></div>
-
-                    <button 
-                        onClick={(e) => handleDelete(lightboxImage.id, e)}
-                        className="flex flex-col items-center gap-1 text-red-400 hover:text-red-600 transition-colors"
-                    >
-                        <div className="p-2 bg-red-50 rounded-full"><Trash2 className="w-5 h-5" /></div>
-                        <span className="text-[10px] uppercase font-bold tracking-widest">Delete</span>
+                    
+                    <div className="w-px h-8 bg-warm-taupe/30"></div>
+                    <button onClick={(e) => handleDelete(lightboxImage.id, e)} className="flex flex-col items-center gap-1 text-red-400 hover:text-red-600 transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                        <span className="text-[9px] font-bold uppercase tracking-widest">DELETE</span>
                     </button>
                 </div>
             </div>

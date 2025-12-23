@@ -1,3 +1,4 @@
+
 export enum GenerationStatus {
   IDLE = 'IDLE',
   UPLOADING = 'UPLOADING',
@@ -13,6 +14,7 @@ export interface GeneratedImage {
   scenario: string;
   timestamp: number;
   category: 'avatar' | 'product' | 'carousel';
+  videoPrompt?: string;
 }
 
 export interface GeneratedCopy {
@@ -22,6 +24,7 @@ export interface GeneratedCopy {
   emailContent: string;
   socialContent: string;
   salesPageContent: string;
+  groundingUrls?: Array<{ uri: string; title: string }>;
 }
 
 export interface Scenario {
@@ -46,4 +49,4 @@ export type StyleTheme = {
   id: string;
   label: string;
   prompt: string;
-};
+}
