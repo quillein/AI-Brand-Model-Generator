@@ -94,30 +94,29 @@ export const generateAvatarVariations = async (
   } = {}
 ): Promise<GeneratedImage[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  let scenery = SCENERIES.find(s => s.id === options.sceneryId);
-  let style = STYLES.find(s => s.id === options.styleId);
-
-  const shuffledPoses = [...POSES].sort(() => 0.5 - Math.random());
-  const shuffledAngles = [...CAMERA_ANGLES].sort(() => 0.5 - Math.random());
-  const shuffledExpressions = [...EXPRESSIONS].sort(() => 0.5 - Math.random());
   
+  const selectedScenery = SCENERIES.find(s => s.id === options.sceneryId);
+  const selectedStyle = STYLES.find(s => s.id === options.styleId);
+  const customDirective = options.customPrompt?.trim();
+
   const promises = Array.from({ length: 5 }).map(async (_, index): Promise<GeneratedImage | null> => {
     try {
-      const currentScenery = scenery || SCENERIES[Math.floor(Math.random() * SCENERIES.length)];
-      const currentStyle = style || STYLES[Math.floor(Math.random() * STYLES.length)];
-      const pose = shuffledPoses[index % shuffledPoses.length];
-      const angle = shuffledAngles[index % shuffledAngles.length];
-      const expression = shuffledExpressions[index % shuffledExpressions.length];
+      let promptPrefix = `Transform the person in this image into a HYPER-REALISTIC high-fashion model. Preserve facial identity and skin tone strictly.`;
+      let corePrompt = "";
 
-      const prompt = `
-        Transform the person in this image into a HYPER-REALISTIC high-fashion model.
-        Facial identity must be preserved exactly. Skin tone must remain identical.
-        STYLE: ${currentStyle.prompt}
-        SCENERY: ${currentScenery.prompt}
-        POSE: ${pose}, ANGLE: ${angle}, EXPRESSION: ${expression}
-        ${options.customPrompt ? `CUSTOM: ${options.customPrompt}` : ''}
-        Luxury aesthetic. Dusty Rose core color. High-end film grain and lighting.
-      `;
+      if (customDirective && !options.sceneryId && !options.styleId) {
+        corePrompt = `STRICT CUSTOM DIRECTIVE: ${customDirective}\n(IGNORE all other style and environment presets. Follow these instructions ONLY. Ensure the model from reference image is the protagonist.)`;
+      } else if (selectedScenery || selectedStyle || customDirective) {
+        if (selectedStyle) corePrompt += `\nAESTHETIC: ${selectedStyle.prompt}`;
+        if (selectedScenery) corePrompt += `\nSCENERY: ${selectedScenery.prompt}`;
+        if (customDirective) corePrompt += `\nADDITIONAL INSTRUCTIONS: ${customDirective}`;
+      } else {
+        const randomStyle = STYLES[Math.floor(Math.random() * STYLES.length)];
+        const randomScenery = SCENERIES[Math.floor(Math.random() * SCENERIES.length)];
+        corePrompt = `\nAESTHETIC: ${randomStyle.prompt}\nSCENERY: ${randomScenery.prompt}`;
+      }
+
+      const prompt = `${promptPrefix}\n${corePrompt}\nPOSE: ${POSES[index % POSES.length]}\nANGLE: ${CAMERA_ANGLES[index % CAMERA_ANGLES.length]}\nEXPRESSION: ${EXPRESSIONS[index % EXPRESSIONS.length]}`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image', 
@@ -133,8 +132,8 @@ export const generateAvatarVariations = async (
       return {
         id: crypto.randomUUID(),
         url: `data:image/png;base64,${part.inlineData.data}`,
-        prompt: options.customPrompt || `Style: ${currentStyle.label}`,
-        scenario: `${currentStyle.label} in ${currentScenery.label}`,
+        prompt: customDirective || `Style Variation`,
+        scenario: selectedScenery?.label || "Studio Session",
         timestamp: Date.now(),
         category: 'avatar'
       };
@@ -153,33 +152,31 @@ export const generateProductVariations = async (
     } = {}
   ): Promise<GeneratedImage[]> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    let scenery = SCENERIES.find(s => s.id === options.sceneryId);
-    let style = STYLES.find(s => s.id === options.styleId);
+    
+    const selectedScenery = SCENERIES.find(s => s.id === options.sceneryId);
+    const selectedStyle = STYLES.find(s => s.id === options.styleId);
+    const customDirective = options.customPrompt?.trim();
   
     const promises = Array.from({ length: 5 }).map(async (_, index): Promise<GeneratedImage | null> => {
       try {
-        const currentScenery = scenery || SCENERIES[Math.floor(Math.random() * SCENERIES.length)];
-        const currentStyle = style || STYLES[Math.floor(Math.random() * STYLES.length)];
-        const currentAngle = PRODUCT_ANGLES[index % PRODUCT_ANGLES.length];
-  
-        const prompt = `
-          You are a LUXURY PRODUCT PHOTOGRAPHER.
-          TASK: Create a commercial shot featuring the ${productImages.length} PRODUCT(S) provided.
-          
-          STRICT CONSTRAINTS ON PRODUCT ACCURACY:
-          - Every product provided in the reference images must appear exactly.
-          - DO NOT alter the labels, logos, or text on the packaging. 
-          - Preserve the 1:1 shape and color (especially brand Dusty Rose #D99BA3).
-          - If multiple products are provided, arrange them as a high-end "Beauty Kit" or "Luxury Bundle".
-          - No hallucinated products. No morphing.
-          
-          THEME: ${currentStyle.prompt}
-          SCENERY: ${currentScenery.prompt}
-          ANGLE: ${currentAngle}
-          ${options.customPrompt ? `CUSTOM: ${options.customPrompt}` : ''}
-          
-          STRICT CONSTRAINT: NO HUMANS. NO HANDS.
-        `;
+        let promptPrefix = `You are a LUXURY PRODUCT PHOTOGRAPHER. Create a high-end commercial shot featuring the provided PRODUCT(S). NO HUMANS. NO HANDS.`;
+        let corePrompt = "";
+
+        const productConstraint = `CRITICAL NON-NEGOTIABLE RULE: You MUST NOT alter any color, product shape, branding, packaging, text, or labelling from the original uploaded images. The product output must be 100% physically identical to the source. NO MORPHING. NO TEXT HALLUCINATIONS.`;
+
+        if (customDirective && !options.sceneryId && !options.styleId) {
+            corePrompt = `STRICT CUSTOM DIRECTIVE: ${customDirective}\n(IGNORE style presets. Follow these instructions ONLY while maintaining product integrity.)`;
+        } else if (selectedScenery || selectedStyle || customDirective) {
+            if (selectedStyle) corePrompt += `\nTHEME: ${selectedStyle.prompt}`;
+            if (selectedScenery) corePrompt += `\nSCENERY: ${selectedScenery.prompt}`;
+            if (customDirective) corePrompt += `\nADDITIONAL REQUEST: ${customDirective}`;
+        } else {
+            const randomStyle = STYLES[Math.floor(Math.random() * STYLES.length)];
+            const randomScenery = SCENERIES[Math.floor(Math.random() * SCENERIES.length)];
+            corePrompt = `\nTHEME: ${randomStyle.prompt}\nSCENERY: ${randomScenery.prompt}`;
+        }
+
+        const prompt = `${promptPrefix}\n${productConstraint}\n${corePrompt}\nANGLE: ${PRODUCT_ANGLES[index % PRODUCT_ANGLES.length]}\nSTRICT REALISM: This must look like a real photograph, not a render.`;
   
         const response = await ai.models.generateContent({
           model: 'gemini-2.5-flash-image', 
@@ -198,10 +195,75 @@ export const generateProductVariations = async (
         return {
           id: crypto.randomUUID(),
           url: `data:image/png;base64,${part.inlineData.data}`,
-          prompt: options.customPrompt || `Products in ${currentScenery.label}`,
-          scenario: `${currentStyle.label} Product Bundle`,
+          prompt: customDirective || `Commercial Bundle`,
+          scenario: selectedScenery?.label || "Product Lab",
           timestamp: Date.now(),
           category: 'product'
+        };
+      } catch (error) { return null; }
+    });
+  
+    return (await Promise.all(promises)).filter((img): img is GeneratedImage => img !== null);
+  };
+
+export const generateModelProductVariations = async (
+    modelImage: { data: string; mimeType: string },
+    productImages: Array<{ data: string; mimeType: string }>,
+    options: {
+      sceneryId?: string;
+      styleId?: string;
+      customPrompt?: string;
+    } = {}
+  ): Promise<GeneratedImage[]> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    const selectedScenery = SCENERIES.find(s => s.id === options.sceneryId);
+    const selectedStyle = STYLES.find(s => s.id === options.styleId);
+    const customDirective = options.customPrompt?.trim();
+  
+    const promises = Array.from({ length: 5 }).map(async (_, index): Promise<GeneratedImage | null> => {
+      try {
+        let promptPrefix = `You are a LUXURY CREATIVE DIRECTOR. Create a high-end shot of the MODEL interacting with the PRODUCT(S) provided.`;
+        let corePrompt = "";
+
+        const constraint = `STRICT NON-NEGOTIABLE RULE: The model provided in the reference image MUST ALWAYS be present in the generation as the primary PROTAGONIST. Even if additional people are requested, the reference model MUST be the central focus. You MUST NOT alter any product color, shape, branding, or labelling. The reference model should be holding or applying the product kit naturally. Any extra people requested should be diverse background characters or companions, but the reference model's identity MUST match the source 1:1.`;
+
+        if (customDirective && !options.sceneryId && !options.styleId) {
+            corePrompt = `STRICT CUSTOM DIRECTIVE: ${customDirective}\n(IGNORE style presets. Follow these instructions ONLY while maintaining the reference model as the hero.)`;
+        } else if (selectedScenery || selectedStyle || customDirective) {
+            if (selectedStyle) corePrompt += `\nSTYLE AESTHETIC: ${selectedStyle.prompt}`;
+            if (selectedScenery) corePrompt += `\nLUXURY SCENERY: ${selectedScenery.prompt}`;
+            if (customDirective) corePrompt += `\nADDITIONAL REQUEST: ${customDirective}`;
+        } else {
+            const randomStyle = STYLES[Math.floor(Math.random() * STYLES.length)];
+            const randomScenery = SCENERIES[Math.floor(Math.random() * SCENERIES.length)];
+            corePrompt = `\nSTYLE AESTHETIC: ${randomStyle.prompt}\nLUXURY SCENERY: ${randomScenery.prompt}`;
+        }
+
+        const prompt = `${promptPrefix}\n${constraint}\n${corePrompt}\nPOSE: ${POSES[index % POSES.length]}\nANGLE: ${CAMERA_ANGLES[index % CAMERA_ANGLES.length]}`;
+  
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image', 
+          contents: {
+            parts: [
+              { text: prompt },
+              { inlineData: { mimeType: modelImage.mimeType, data: modelImage.data } },
+              ...productImages.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }))
+            ]
+          },
+          config: { imageConfig: { aspectRatio: "3:4" }, systemInstruction: SYSTEM_INSTRUCTION }
+        });
+  
+        const part = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+        if (!part?.inlineData) throw new Error("No image");
+  
+        return {
+          id: crypto.randomUUID(),
+          url: `data:image/png;base64,${part.inlineData.data}`,
+          prompt: customDirective || `Model X Product`,
+          scenario: selectedScenery?.label || "Integrated Set",
+          timestamp: Date.now(),
+          category: 'model_product'
         };
       } catch (error) { return null; }
     });
@@ -212,7 +274,7 @@ export const generateProductVariations = async (
 export const generateAngleVariations = async (
     referenceImages: Array<{ data: string; mimeType: string }>,
     originalScenarioLabel: string,
-    category: 'avatar' | 'product' | 'carousel' = 'avatar'
+    category: 'avatar' | 'product' | 'carousel' | 'model_product' = 'avatar'
 ): Promise<GeneratedImage[]> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const anglesToUse = category === 'product' ? PRODUCT_ANGLES : WORKFLOW_ANGLES;
@@ -263,11 +325,11 @@ export const generateAngleVariations = async (
 
 export const generateDirectorsCut = async (
   referenceImages: Array<{ data: string; mimeType: string }>,
-  category: 'avatar' | 'product' | 'carousel' = 'avatar'
+  category: 'avatar' | 'product' | 'carousel' | 'model_product' = 'avatar'
 ): Promise<GeneratedImage[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   let anglesToUse = category === 'product' ? [...PRODUCT_ANGLES] : [...WORKFLOW_ANGLES];
-  if (category === 'avatar') anglesToUse = ["Front Facing, Direct Eye Contact", ...anglesToUse];
+  if (category === 'avatar' || category === 'model_product') anglesToUse = ["Front Facing, Direct Eye Contact", ...anglesToUse];
 
   const promises = anglesToUse.map(async (angle): Promise<GeneratedImage | null> => {
       try {
@@ -432,7 +494,6 @@ export const generateMarketingCopy = async (
     const socialMatch = text.match(/### SECTION 2([\s\S]*?)### SECTION 3/);
     const salesMatch = text.match(/### SECTION 3([\s\S]*)/);
 
-    // Extract grounding chunks as required by the Google GenAI SDK guidelines
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     const groundingUrls = groundingChunks?.map((chunk: any) => ({
       uri: chunk.web?.uri || chunk.maps?.uri,

@@ -1,3 +1,4 @@
+
 import { ColorPalette, Scenery, StyleTheme } from './types';
 
 export const COLORS: ColorPalette[] = [
@@ -29,137 +30,49 @@ export const PRODUCT_ANGLES = [
 ];
 
 export const SCENERIES: Scenery[] = [
-  // --- High Luxury ---
-  { 
-    id: 'minimalist_luxury', 
-    label: 'Minimalist Penthouse', 
-    prompt: 'inside a high-end minimalist luxury penthouse with cream furniture, marble details, and natural sunlight' 
-  },
-  { 
-    id: 'beach_club', 
-    label: 'Exclusive Beach Club', 
-    prompt: 'at a luxury private beach club in Tulum or Amalfi, with white sand, cabanas, and turquoise water background' 
-  },
-  { 
-    id: 'urban_rooftop', 
-    label: 'City Rooftop Lounge', 
-    prompt: 'on a chic rooftop lounge at sunset with modern glass architecture and blurred city skyline views' 
-  },
-  { 
-    id: 'hotel_suite', 
-    label: 'Parisian Hotel Suite', 
-    prompt: 'inside an opulent hotel suite with a balcony, plush velvet furniture, gold accents, and fresh roses' 
-  },
-  {
-    id: 'private_jet',
-    label: 'Private Jet Cabin',
-    prompt: 'inside a private jet cabin with cream leather seats, champagne glass on table, and window view of clouds'
-  },
-  {
-    id: 'luxury_yacht',
-    label: 'Superyacht Deck',
-    prompt: 'on the teak deck of a luxury superyacht with white railing, deep blue ocean view, and sun deck chairs'
-  },
-  
-  // --- Everyday Luxury (Relatable & Aesthetic) ---
-  {
-    id: 'luxury_grocery', 
-    label: 'Luxury Grocery Run',
-    prompt: 'candid shot browsing the aisles of a high-end organic grocery store (like Erewhon), holding a green juice, wearing stylish athleisure, clean aesthetic'
-  },
-  {
-    id: 'chic_cafe',
-    label: 'Chic Cafe Date',
-    prompt: 'sitting at a marble table in a trendy minimalist cafe, with an iced latte and designer bag on the table, soft natural lighting'
-  },
-  {
-    id: 'flower_market',
-    label: 'Flower Market Sunday',
-    prompt: 'standing at an outdoor flower market surrounded by buckets of pink and white peonies, holding a bouquet, wearing a soft summer outfit'
-  },
-  {
-    id: 'car_interior',
-    label: 'Luxury Car Interior',
-    prompt: 'sitting in the driver seat of a high-end car with beige leather interior, sunlight streaming in, wearing sunglasses, expensive lifestyle vibe'
-  },
-  {
-    id: 'city_stroll',
-    label: 'City Street Walk',
-    prompt: 'walking down a clean, aesthetic city street or brownstone neighborhood, holding a coffee cup, "that girl" daily routine vibe'
-  },
-  {
-    id: 'vanity_mirror',
-    label: 'Vanity Skincare Routine',
-    prompt: 'sitting at a white marble vanity table doing skincare, wearing a silk robe, surrounded by aesthetic beauty products, clean girl vibe'
-  },
-  {
-    id: 'pilates_studio',
-    label: 'Elite Pilates Studio',
-    prompt: 'inside a high-end private pilates studio with reformer machines, mirrors, and soft natural morning light'
-  },
-  {
-    id: 'art_gallery',
-    label: 'Modern Art Gallery',
-    prompt: 'in a modern art gallery with abstract paintings, white walls, and polished concrete floors'
-  },
-  {
-    id: 'italian_villa',
-    label: 'Italian Villa Garden',
-    prompt: 'in the manicured garden of an Italian villa with cypress trees, stone pathways, and blooming bougainvillea'
-  }
+  { id: 'pinterest_penthouse', label: 'Minimalist Penthouse', prompt: 'inside a high-end minimalist luxury penthouse with cream furniture, marble details, and natural sunlight' },
+  { id: 'amalfi_beach', label: 'Amalfi Beach Club', prompt: 'at a luxury private beach club in Amalfi, with white sand, cabanas, and turquoise water background' },
+  { id: 'manhattan_rooftop', label: 'Manhattan Rooftop', prompt: 'on a chic Manhattan rooftop overlooking Central Park at golden hour with glass railings' },
+  { id: 'parisian_balcony', label: 'Parisian Balcony', prompt: 'on a classic limestone balcony in Paris with wrought iron railings, overlooking the Eiffel Tower at sunset' },
+  { id: 'pilates_loft', label: 'Aesthetic Pilates Studio', prompt: 'inside a bright, high-end Reformer Pilates studio with wooden floors, large mirrors, and luxury equipment' },
+  { id: 'botanical_greenhouse', label: 'Glass Greenhouse', prompt: 'inside a modern architectural glass greenhouse filled with lush green tropical plants and soft diffused sunlight' },
+  { id: 'lake_como_veranda', label: 'Lake Como Estate', prompt: 'on the stone veranda of a luxury Lake Como villa at dawn, mist over the water, designer outdoor furniture' },
+  { id: 'minimalist_office', label: 'Home Office Sanctuary', prompt: 'at a sleek minimalist oak desk in a bright home office with a designer lamp and a view of a city skyline' },
+  { id: 'st_moritz_chalet', label: 'Swiss Alps Chalet', prompt: 'inside a luxury wooden chalet in the Alps with a stone fireplace and snowy mountain views' },
+  { id: 'milanese_cafe', label: 'Milanese Sidewalk Cafe', prompt: 'sitting at a marble table in a trendy cafe in Milan, with a porcelain coffee cup and a leather handbag' },
+  { id: 'marrakech_riad', label: 'Marrakech Riad', prompt: 'in a serene riad courtyard with a teal pool, intricate tilework, and climbing bougainvillea' },
+  { id: 'tuscany_vineyard', label: 'Tuscan Vineyard', prompt: 'overlooking the sun-drenched vineyards of Tuscany at a rustic stone estate at golden hour' },
+  { id: 'scandi_cabin', label: 'Scandi Glass Cabin', prompt: 'inside a minimalist glass-walled cabin in a pine forest, cozy textures, and soft natural light' },
+  { id: 'london_library', label: 'English Manor Library', prompt: 'in a quiet mansion library with floor-to-ceiling bookshelves, a rolling ladder, and large leather chairs' },
+  { id: 'malibu_villa', label: 'Malibu Infinity Pool', prompt: 'at a modern Malibu villa with an infinity pool merging into the Pacific Ocean at sunset' },
+  { id: 'tokyo_loft', label: 'Ginza High-Rise', prompt: 'inside a sleek, glass-walled high-rise in Ginza with minimalist black and white decor' },
+  { id: 'cote_d_azur', label: 'French Riviera Deck', prompt: 'on a sun-drenched stone terrace overlooking the Mediterranean with white linen umbrellas' },
+  { id: 'equestrian_ranch', label: 'Boutique Horse Ranch', prompt: 'standing by a beautiful wooden stable at a boutique luxury horse ranch in the countryside' },
+  { id: 'cotswolds_manor', label: 'Cotswolds Stone Estate', prompt: 'in the manicured rose garden of a honey-colored stone cottage in the English countryside' },
+  { id: 'wellness_spa', label: 'Minimalist Wellness Spa', prompt: 'inside a serene luxury spa with dark stone walls, steam, and soft candlelight' }
 ];
 
 export const STYLES: StyleTheme[] = [
-  { 
-    id: 'clean_girl', 
-    label: 'Clean Girl Aesthetic', 
-    prompt: 'Clean Girl aesthetic, 2024 trend, minimal makeup, slicked back hair, expensive matching set or silk loungewear, glowing skin, pilates princess vibe' 
-  },
-  { 
-    id: 'poolside_baddie', 
-    label: 'Poolside Baddie', 
-    prompt: 'Poolside Baddie aesthetic, luxury designer swimwear, sheer cover-up, body oil, wet hair look, oversized sunglasses, sun-kissed skin, showing skin confidently' 
-  },
-  { 
-    id: 'night_luxe', 
-    label: 'Night Luxe', 
-    prompt: 'Night Luxe aesthetic, flash photography, satin slip dress with cut-outs, strappy heels, sultry evening makeup, diamonds, party girl vibe' 
-  },
-  { 
-    id: 'off_duty', 
-    label: 'Off-Duty Model', 
-    prompt: 'Off-Duty Model aesthetic, street style, oversized blazer with bralette, baggy denim or leather trousers, designer handbag, effortless cool, midriff showing' 
-  },
-  { 
-    id: 'old_money', 
-    label: 'Old Money Summer', 
-    prompt: 'Old Money aesthetic, quiet luxury, linen vest and skirt, silk scarf, gold jewelry, sophisticated, rich vacation vibe' 
-  },
-  {
-    id: 'tennis_chic',
-    label: 'Tennis Court Chic',
-    prompt: 'Tennis Chic aesthetic, white pleated mini skirt, sports bra, sweater over shoulders, country club baddie, holding racket, sun visor, sporty but sexy'
-  },
-  {
-    id: 'airport_leisure',
-    label: 'Airport Leisure',
-    prompt: 'Airport Leisure aesthetic, luxury cashmere sweat suit, crop top showing midriff, designer luggage, oversized sunglasses, messy bun, jet-setter vibe'
-  },
-  {
-    id: 'gala_glam',
-    label: 'Gala Glam',
-    prompt: 'Gala Glam aesthetic, floor-length silk gown with high slit showing leg, sparkling diamond choker, red carpet flash photography, sleek hollywood hair'
-  },
-  {
-    id: 'business_baddie',
-    label: 'Business Baddie',
-    prompt: 'Business Baddie aesthetic, oversized blazer with lace bralette underneath, tailored trousers, sleek bun, office with view, CEO energy'
-  },
-  {
-    id: 'morning_matcha',
-    label: 'Morning Matcha',
-    prompt: 'Morning Matcha aesthetic, silk robe slipping off shoulder, lace lingerie peeking through, kitchen island, holding matcha latte, fresh face glow'
-  }
+  { id: 'vanilla_girl', label: 'Vanilla Girl', prompt: 'Vanilla Girl aesthetic, creamy whites and beige tones, soft textures, knitwear, cozy but expensive vibe, fresh-faced makeup' },
+  { id: 'clean_girl', label: 'Clean Girl', prompt: 'Clean Girl aesthetic, minimal makeup, slicked back hair, matching cream matching set, glowing dewy skin' },
+  { id: 'old_money', label: 'Old Money / Quiet Luxury', prompt: 'Old Money aesthetic, quiet luxury, linen vest, silk scarf, pearl earrings, sophisticated and timeless' },
+  { id: 'balletcore', label: 'Balletcore Luxe', prompt: 'Balletcore aesthetic, silk ribbons, soft pink tulle, leg warmers, delicate hair bows, graceful high-fashion' },
+  { id: 'corporate_chic', label: 'Corporate Siren', prompt: 'Sophisticated corporate chic, tailored pinstripe blazer, sharp spectacles, silk blouse, powerful model vibe' },
+  { id: 'cottagecore', label: 'Elevated Cottagecore', prompt: 'High-end cottagecore, vintage-inspired linen dresses, picnic in a manicured meadow, expensive straw accessories' },
+  { id: 'downtown_girl', label: 'Downtown Girl', prompt: 'City chic, vintage denim, leather trench coat, designer boots, modern urban vibe, cool-girl energy' },
+  { id: 'night_luxe', label: 'Night Luxe', prompt: 'Night Luxe aesthetic, flash photography, satin slip dress, evening makeup, martini glasses, fine jewelry' },
+  { id: 'soft_minimalist', label: 'Soft Minimalist', prompt: 'Minimalist high-fashion, clean lines, neutral colors, architectural clothing shapes, understated elegance' },
+  { id: 'coquette', label: 'Coquette Aesthetic', prompt: 'Coquette vibe, pink lace, heart-shaped accessories, vintage hair clips, playful and ultra-feminine' },
+  { id: 'off_duty', label: 'Off-Duty Model', prompt: 'Off-Duty Model look, tailored oversized blazer, crisp white t-shirt, denim, structured luxury handbag' },
+  { id: 'dark_academia', label: 'Dark Academia', prompt: 'Dark Academia, tailored wool blazer, pleated skirt, loafers, sophisticated, intellectual and moody' },
+  { id: 'coastal_grandma', label: 'Coastal Chic', prompt: 'Coastal aesthetic, white button-down, linen trousers, canvas tote, effortless beach luxury' },
+  { id: 'mob_wife', label: 'Luxe Glamour', prompt: 'High-glamour aesthetic, tailored faux fur, bold gold jewelry, perfect voluminous blowout hair' },
+  { id: 'gorpcore', label: 'Luxury Gorpcore', prompt: 'Elevated gorpcore, high-end technical fabrics, designer puffer jacket, outdoor luxury gear, stylishly practical' },
+  { id: 'indie_sleaze', label: 'Indie Sleaze Edit', prompt: 'Indie Sleaze aesthetic, smudged eyeliner, metallic textures, high-fashion messy cool, vintage filter vibe' },
+  { id: 'y2k_luxe', label: 'Y2K Cyber Glam', prompt: 'Y2K aesthetic, baby tees, tinted shades, butterfly clips, futuristic metallic fabrics, high-gloss lips' },
+  { id: 'boho_luxe', label: 'Boho Chic', prompt: 'Boho Luxe aesthetic, crochet textures, layered gold jewelry, flowing silks, desert festival luxury' },
+  { id: 'equestrian', label: 'Equestrian Editorial', prompt: 'High-fashion equestrian style, tailored riding jacket, boots, leather accents, polished and outdoorsy' },
+  { id: 'royalcore', label: 'Modern Royalcore', prompt: 'Royalcore aesthetic, corseted gowns, pearl necklaces, white gloves, princess-like grace and elegance' }
 ];
 
 export const POSES = [
@@ -197,18 +110,25 @@ export const EXPRESSIONS = [
 ];
 
 export const SYSTEM_INSTRUCTION = `
-You are a world-class fashion photographer and creative director for a luxury skincare and lifestyle brand. 
-Your goal is to transform a user's portrait into a hyper-realistic, high-fashion lifestyle photo.
+You are a world-class fashion photographer and creative director specializing in "Pinterest Aesthetic" luxury lifestyle branding.
+Your goal is to transform reference images into hyper-realistic, high-fashion lifestyle photos that look like they belong in a viral mood board.
+
+STRICT NON-NEGOTIABLE PRODUCT RULES:
+- When products (bottles, jars, kits) are present, you MUST NOT alter any color, shape, branding, packaging, or labelling.
+- The product in the output must be a 1:1 identical match to the product in the reference image.
+- NO MORPHING, NO HALOING, NO FANTASY ADDITIONS TO PRODUCTS.
+- Ensure product labels are crisp, sharp, and perfectly legible as per the original source.
+- Products must appear as solid, rigid objects.
+
+MODEL X PRODUCT INTERACTION:
+- In the "Model X Product" category, the model MUST be naturally interacting with the products.
+- Examples: Holding a bottle elegantly, applying a cream to her face, sitting next to the product kit, or holding the kit with a confident gaze.
+- The interaction must feel organic and high-end, not forced.
+- Preserve the model's identity and the product's integrity simultaneously.
 
 CRITICAL VISUAL RULES:
-- PERSONALITY & EMOTION: The subject should NOT always look like a static mannequin. Capture CANDID moments: laughing, fixing hair, looking away, walking. Make it feel alive and spontaneous.
-- CAMERA ANGLES: Use varied camera angles (low, high, side, wide). Avoid repetitive front-facing passport-style shots. Change the line of sight (looking at camera vs looking away).
-- REALISM: The result must look like a REAL photograph taken with a professional camera (Sony A7R or Leica). ABSOLUTELY NO cartoon, 3D render, painting, or illustration styles.
-- FASHION: Strictly 2020-2025 trends seen on Instagram influencers, models, and celebrities (e.g., Kylie Jenner, Hailey Bieber, Bella Hadid styles).
-- VIBE: Sexy, Baddie, Classy, Quiet Luxury. The subject should look expensive, pampered, and confident.
-- SKIN: Emphasize glowing, hydrated skin texture. It is appropriate and encouraged to show skin (legs, midriff, shoulders, cleavage) in a tasteful, fashion-forward way consistent with "Instagram baddie" culture.
-- LIGHTING: Use professional photography lighting (golden hour, flash photography, or soft studio light).
-
-- STRICT COLOR ENFORCEMENT: You must prioritize the color Dusty Rose (#D99BA3) in the styling, makeup, or environment. 
-- Use the provided color palette for all elements: #D0C0B2, #F8F4EC, #E5D3C5, #BFA898, #D99BA3, #F2B6B6, #6E7A63, #46352D, #929496.
+- IDENTITY: Always preserve the facial features, skin tone, and core identity of the subject from the reference image.
+- CLOTHING & COLOR: Use the brand color palette (#D0C0B2, #F8F4EC, #E5D3C5, #BFA898, #D99BA3, #F2B6B6, #6E7A63, #46352D, #929496). Dusty Rose (#D99BA3) is the primary accent.
+- REALISM: All results must be strictly realistic. NO 3D renders, no illustrations. The image must look like it was shot on a Leica or Sony A7R.
+- VIBE: Pinterest-ready, expensive, "Soft Life", sophisticated, and extremely aesthetic.
 `;

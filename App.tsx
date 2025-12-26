@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, Download, RefreshCw, Camera, Heart, Palette, MessageSquare, LayoutGrid, Trash2, History, Video, ShoppingBag, Plus, Tag, Clapperboard, Maximize2, X, LayoutTemplate, Layers, Megaphone, Copy, Check, FileVideo, ExternalLink } from 'lucide-react';
-import { generateAvatarVariations, generateAngleVariations, generateProductMockup, fileToGenerativePart, generateProductVariations, generateDirectorsCut, generateIGCarousel, generateMarketingCopy } from './services/geminiService';
+import { Sparkles, Download, RefreshCw, Camera, Heart, Palette, MessageSquare, LayoutGrid, Trash2, History, Video, ShoppingBag, Plus, Tag, Clapperboard, Maximize2, X, LayoutTemplate, Layers, Megaphone, Copy, Check, FileVideo, ExternalLink, Link2, Settings2 } from 'lucide-react';
+import { generateAvatarVariations, generateAngleVariations, generateProductMockup, fileToGenerativePart, generateProductVariations, generateDirectorsCut, generateIGCarousel, generateMarketingCopy, generateModelProductVariations } from './services/geminiService';
 import { GeneratedImage, GeneratedCopy, GenerationStatus } from './types';
 import { Button } from './components/Button';
 import { ColorSwatch } from './components/ColorSwatch';
@@ -10,8 +10,9 @@ import { saveImagesToDB, getImagesFromDB, deleteImageFromDB, clearDB } from './s
 
 const App: React.FC = () => {
   const [view, setView] = useState<'studio' | 'gallery'>('studio');
-  const [studioMode, setStudioMode] = useState<'model' | 'product' | 'carousel' | 'copy'>('model');
+  const [studioMode, setStudioMode] = useState<'model' | 'product' | 'model_product' | 'carousel' | 'copy'>('model');
   const [generationType, setGenerationType] = useState<'creative' | 'directors'>('creative');
+  const [showTweakPanel, setShowTweakPanel] = useState(false);
   
   // Model Studio Upload
   const [file, setFile] = useState<File | null>(null);
@@ -74,7 +75,7 @@ const App: React.FC = () => {
     }
   };
 
-  const switchStudioMode = (mode: 'model' | 'product' | 'carousel' | 'copy') => {
+  const switchStudioMode = (mode: 'model' | 'product' | 'model_product' | 'carousel' | 'copy') => {
     if (studioMode === mode) return;
     setStudioMode(mode);
     setFile(null);
@@ -97,16 +98,15 @@ const App: React.FC = () => {
     setMarketingContext('');
     setMarketingAudience('');
     setCopyResult(null);
+    setShowTweakPanel(false);
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files[0]) {
-      // FIX line 118 error: Argument of type 'unknown' is not assignable to parameter of type 'Blob | MediaSource'
-      const f = event.target.files[0] as unknown as File;
-      setFile(f);
-      // Casting to Blob to satisfy createObjectURL requirements when type is unknown
-      setPreviewUrl(URL.createObjectURL(f as unknown as Blob));
-      fileToGenerativePart(f).then(setOriginalBase64).catch(console.error);
+    const selectedFile = event.target.files?.[0];
+    if (selectedFile) {
+      setFile(selectedFile);
+      setPreviewUrl(URL.createObjectURL(selectedFile));
+      fileToGenerativePart(selectedFile).then(setOriginalBase64).catch(console.error);
       setResults([]);
       setStatus(GenerationStatus.IDLE);
       setView('studio');
@@ -115,8 +115,8 @@ const App: React.FC = () => {
 
   const handleProductStudioChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const newFiles = Array.from(e.target.files);
-      const newPreviews = newFiles.map(f => URL.createObjectURL(f));
+      const newFiles: File[] = Array.from(e.target.files);
+      const newPreviews = newFiles.map((f: File) => URL.createObjectURL(f));
       const newBase64s = await Promise.all(newFiles.map(fileToGenerativePart));
       
       setProductFiles(prev => [...prev, ...newFiles]);
@@ -134,20 +134,18 @@ const App: React.FC = () => {
   };
 
   const handleCarouselModelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      // FIX line 148 error: Argument of type 'unknown' is not assignable to parameter of type 'Blob | MediaSource'
-      const f = e.target.files[0] as unknown as File;
-      setCarouselModelFile(f);
-      // Casting to Blob to satisfy createObjectURL requirements when type is unknown
-      setCarouselModelPreview(URL.createObjectURL(f as unknown as Blob));
-      fileToGenerativePart(f).then(setCarouselModelBase64).catch(console.error);
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      setCarouselModelFile(selectedFile);
+      setCarouselModelPreview(URL.createObjectURL(selectedFile));
+      fileToGenerativePart(selectedFile).then(setCarouselModelBase64).catch(console.error);
     }
   };
 
   const handleCarouselProductChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const newFiles = Array.from(e.target.files);
-      const newPreviews = newFiles.map(f => URL.createObjectURL(f));
+      const newFiles: File[] = Array.from(e.target.files);
+      const newPreviews = newFiles.map((f: File) => URL.createObjectURL(f));
       const newBase64s = await Promise.all(newFiles.map(fileToGenerativePart));
       
       setCarouselProductFiles(prev => [...prev, ...newFiles]);
@@ -181,6 +179,8 @@ const App: React.FC = () => {
         if (!marketingProduct || !marketingContext) return;
     } else if (studioMode === 'product') {
         if (productBase64s.length === 0) return;
+    } else if (studioMode === 'model_product') {
+        if (!originalBase64 || productBase64s.length === 0) return;
     } else {
         if (!file || !originalBase64) return;
     }
@@ -188,6 +188,7 @@ const App: React.FC = () => {
     setResults([]);
     setCopyResult(null);
     setStatus(GenerationStatus.UPLOADING);
+    setShowTweakPanel(false);
     
     try {
       setStatus(GenerationStatus.GENERATING);
@@ -200,7 +201,7 @@ const App: React.FC = () => {
           return;
       }
       else if (studioMode === 'carousel') {
-          const productMime = carouselProductFiles[0]?.type || 'image/jpeg';
+          const productMime = (carouselProductFiles[0] as any)?.type || 'image/jpeg';
           generatedImages = await generateIGCarousel(
               carouselModelBase64!, 
               carouselModelFile!.type,
@@ -209,7 +210,7 @@ const App: React.FC = () => {
               COLORS.find(c => c.hex === carouselThemeColor)?.name || 'Theme'
           );
       } else if (studioMode === 'product') {
-          const productMime = productFiles[0]?.type || 'image/jpeg';
+          const productMime = (productFiles[0] as any)?.type || 'image/jpeg';
           if (generationType === 'directors') {
               generatedImages = await generateDirectorsCut(
                   productBase64s.map(data => ({ data, mimeType: productMime })),
@@ -221,10 +222,27 @@ const App: React.FC = () => {
                   { sceneryId: selectedScenery, styleId: selectedStyle, customPrompt: customPrompt.trim() || undefined }
               );
           }
+      } else if (studioMode === 'model_product') {
+          const modelMime = file?.type || 'image/jpeg';
+          const productMime = (productFiles[0] as any)?.type || 'image/jpeg';
+          
+          if (generationType === 'directors') {
+              generatedImages = await generateDirectorsCut(
+                  [
+                    { data: originalBase64!, mimeType: modelMime },
+                    ...productBase64s.map(data => ({ data, mimeType: productMime }))
+                  ],
+                  'model_product'
+              );
+          } else {
+              generatedImages = await generateModelProductVariations(
+                  { data: originalBase64!, mimeType: modelMime },
+                  productBase64s.map(data => ({ data, mimeType: productMime })),
+                  { sceneryId: selectedScenery, styleId: selectedStyle, customPrompt: customPrompt.trim() || undefined }
+              );
+          }
       } else {
-          // FIX line 276 error: Property 'type' does not exist on type 'unknown'
-          // Using double cast to safely access 'type' property from potentially unknown 'file' state
-          const mimeType = (file as unknown as File).type;
+          const mimeType = file?.type || 'image/jpeg';
           if (generationType === 'directors') {
               generatedImages = await generateDirectorsCut([{ data: originalBase64!, mimeType }], 'avatar');
           } else {
@@ -249,7 +267,6 @@ const App: React.FC = () => {
     setProcessingId(img.id);
     setLightboxImage(null);
     try {
-        // We use the image the user is looking at as the canonical reference for Reshooting
         const angleVariations = await generateAngleVariations(
             [{ data: img.url.split(',')[1], mimeType: 'image/png' }], 
             img.scenario, 
@@ -269,7 +286,7 @@ const App: React.FC = () => {
 
   const handleProductMockupChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && selectedImageForProduct && originalBase64 && file) {
-        const prodFiles = Array.from(e.target.files);
+        const prodFiles = Array.from(e.target.files) as File[];
         setProcessingId(selectedImageForProduct.id);
         try {
             const prodBase64s = await Promise.all(prodFiles.map(fileToGenerativePart));
@@ -338,6 +355,7 @@ const App: React.FC = () => {
     setMarketingContext('');
     setMarketingAudience('');
     setCopyResult(null);
+    setShowTweakPanel(false);
   };
 
   const renderImageCard = (img: GeneratedImage) => (
@@ -356,13 +374,13 @@ const App: React.FC = () => {
             </div>
             <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 z-20 transition-opacity">
                 <div className="flex justify-between items-end">
-                   <span className="text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold bg-espresso text-white">{img.category}</span>
+                   <span className="text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold bg-espresso text-white">{img.category.replace('_', ' X ')}</span>
                    <div className="flex gap-2">
                         <button onClick={(e) => { e.stopPropagation(); handleDownload(img.url, img.id); }} className="bg-white/90 p-2 rounded-full text-espresso shadow-lg hover:bg-dusty-rose hover:text-white transition-all"><Download className="w-4 h-4" /></button>
-                        {originalBase64 && studioMode !== 'carousel' && (
+                        {(originalBase64 || productBase64s.length > 0) && studioMode !== 'carousel' && (
                             <>
                                 <button onClick={(e) => { e.stopPropagation(); handleDirectorCut(img); }} className="bg-white/90 p-2 rounded-full text-espresso shadow-lg hover:bg-sage-green hover:text-white transition-all"><Video className="w-4 h-4" /></button>
-                                {img.category === 'avatar' && <button onClick={(e) => { e.stopPropagation(); triggerProductUpload(img); }} className="bg-white/90 p-2 rounded-full text-espresso shadow-lg hover:bg-almond-buff hover:text-white transition-all"><ShoppingBag className="w-4 h-4" /></button>}
+                                {(img.category === 'avatar' || img.category === 'model_product') && <button onClick={(e) => { e.stopPropagation(); triggerProductUpload(img); }} className="bg-white/90 p-2 rounded-full text-espresso shadow-lg hover:bg-almond-buff hover:text-white transition-all"><ShoppingBag className="w-4 h-4" /></button>}
                             </>
                         )}
                    </div>
@@ -403,9 +421,9 @@ const App: React.FC = () => {
           <Sparkles className="text-dusty-rose w-6 h-6" />
           <h1 className="font-serif text-2xl font-bold tracking-tighter text-espresso">LUXE<span className="text-dusty-rose">AURA</span></h1>
         </div>
-        <div className="flex bg-warm-taupe/10 p-1 rounded-full">
-            <button onClick={() => setView('studio')} className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${view === 'studio' ? 'bg-espresso text-white shadow-md' : 'text-cool-slate'}`}><Camera className="w-4 h-4" />Studio</button>
-            <button onClick={() => setView('gallery')} className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${view === 'gallery' ? 'bg-dusty-rose text-white shadow-md' : 'text-cool-slate'}`}><LayoutGrid className="w-4 h-4" />History ({history.length})</button>
+        <div className="flex bg-warm-taupe/10 p-1 rounded-full overflow-x-auto hide-scrollbar max-w-[60%]">
+            <button onClick={() => setView('studio')} className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${view === 'studio' ? 'bg-espresso text-white shadow-md' : 'text-cool-slate'}`}><Camera className="w-4 h-4" />Studio</button>
+            <button onClick={() => setView('gallery')} className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${view === 'gallery' ? 'bg-dusty-rose text-white shadow-md' : 'text-cool-slate'}`}><LayoutGrid className="w-4 h-4" />History ({history.length})</button>
         </div>
       </nav>
 
@@ -413,10 +431,16 @@ const App: React.FC = () => {
         {view === 'studio' && (
           <div className="animate-in fade-in slide-in-from-bottom-5 duration-500">
             <div className="flex justify-center mb-8">
-                <div className="bg-white border border-warm-taupe p-1.5 rounded-full flex gap-1 overflow-x-auto shadow-sm no-scrollbar">
-                    {['model', 'product', 'carousel', 'copy'].map((m) => (
-                        <button key={m} onClick={() => switchStudioMode(m as any)} className={`px-4 py-2 rounded-full text-xs md:text-sm font-bold transition-all whitespace-nowrap ${studioMode === m ? 'bg-dusty-rose text-white shadow-md' : 'text-cool-slate hover:bg-warm-taupe/20'}`}>
-                            {m === 'copy' ? 'MARKETING AI' : `${m.toUpperCase()} STUDIO`}
+                <div className="bg-white border border-warm-taupe p-1.5 rounded-full flex gap-1 overflow-x-auto shadow-sm hide-scrollbar max-w-full">
+                    {[
+                      { id: 'model', label: 'MODEL STUDIO' },
+                      { id: 'product', label: 'PRODUCT STUDIO' },
+                      { id: 'model_product', label: 'MODEL X PRODUCT' },
+                      { id: 'carousel', label: 'CAROUSEL STUDIO' },
+                      { id: 'copy', label: 'MARKETING AI' }
+                    ].map((m) => (
+                        <button key={m.id} onClick={() => switchStudioMode(m.id as any)} className={`px-5 py-2.5 rounded-full text-xs md:text-sm font-bold transition-all whitespace-nowrap ${studioMode === m.id ? 'bg-dusty-rose text-white shadow-md' : 'text-cool-slate hover:bg-warm-taupe/20'}`}>
+                            {m.label}
                         </button>
                     ))}
                 </div>
@@ -424,19 +448,22 @@ const App: React.FC = () => {
 
             <div className="text-center mb-12 max-w-2xl mx-auto space-y-4">
               <h2 className="font-serif text-4xl md:text-5xl text-espresso">
-                {studioMode === 'copy' ? 'Campaign Command Center' : `${studioMode.charAt(0).toUpperCase() + studioMode.slice(1)} Aesthetic Studio`}
+                {studioMode === 'copy' ? 'Campaign Command Center' : 
+                 studioMode === 'model_product' ? 'Model X Product Studio' :
+                 `${studioMode.charAt(0).toUpperCase() + studioMode.slice(1)} Aesthetic Studio`}
               </h2>
               <p className="text-cool-slate text-lg font-light italic">
                 {studioMode === 'model' ? "Refine your personal soft-life identity." : 
                  studioMode === 'product' ? "Elevate your commercial product photography." : 
+                 studioMode === 'model_product' ? "Integrated lifestyle shots featuring model and products." :
                  studioMode === 'carousel' ? "Curate high-conversion Instagram feeds." : 
                  "Research trends and generate viral marketing copy."}
               </p>
               {studioMode !== 'copy' && <ColorSwatch />}
             </div>
 
-            {(results.length === 0 && !copyResult) && (
-              <div className="max-w-2xl mx-auto space-y-8">
+            {((results.length === 0 && !copyResult) || showTweakPanel) && (
+              <div className="max-w-2xl mx-auto space-y-8 mb-12 animate-in fade-in slide-in-from-top-4 duration-500">
                 {studioMode === 'copy' ? (
                      <div className="bg-white rounded-2xl p-8 shadow-md border border-warm-taupe/30 space-y-6">
                         <div className="space-y-4">
@@ -448,17 +475,17 @@ const App: React.FC = () => {
                             <input type="text" value={marketingAudience} onChange={(e) => setMarketingAudience(e.target.value)} placeholder="e.g. Modern moms interested in skincare" className="w-full bg-alabaster border border-warm-taupe/30 rounded-xl p-4 text-sm focus:outline-none focus:border-dusty-rose transition-all" />
                         </div>
                      </div>
-                ) : studioMode === 'carousel' ? (
+                ) : (studioMode === 'carousel' || studioMode === 'model_product') ? (
                     <div className="space-y-6">
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {/* Model Upload */}
                             <div className="space-y-2">
-                                <label className="text-[10px] font-bold uppercase tracking-widest text-cool-slate ml-2">Carousel Model</label>
-                                <div className="h-64 border-2 border-dashed border-warm-taupe rounded-2xl flex flex-col items-center justify-center p-4 cursor-pointer overflow-hidden bg-oatmeal/20 transition-all hover:bg-oatmeal/30" onClick={() => carouselModelInputRef.current?.click()}>
-                                    <input type="file" ref={carouselModelInputRef} onChange={handleCarouselModelChange} className="hidden" accept="image/*" />
-                                    {carouselModelPreview ? (
+                                <label className="text-[10px] font-bold uppercase tracking-widest text-cool-slate ml-2">{studioMode === 'model_product' ? 'Subject / Model' : 'Carousel Model'}</label>
+                                <div className="h-64 border-2 border-dashed border-warm-taupe rounded-2xl flex flex-col items-center justify-center p-4 cursor-pointer overflow-hidden bg-oatmeal/20 transition-all hover:bg-oatmeal/30" onClick={() => (studioMode === 'model_product' ? fileInputRef : carouselModelInputRef).current?.click()}>
+                                    <input type="file" ref={studioMode === 'model_product' ? fileInputRef : carouselModelInputRef} onChange={studioMode === 'model_product' ? handleFileChange : handleCarouselModelChange} className="hidden" accept="image/*" />
+                                    {(studioMode === 'model_product' ? previewUrl : carouselModelPreview) ? (
                                         <div className="relative w-full h-full group">
-                                            <img src={carouselModelPreview} className="w-full h-full object-cover rounded-xl" />
+                                            <img src={studioMode === 'model_product' ? previewUrl! : carouselModelPreview!} className="w-full h-full object-cover rounded-xl" />
                                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">Change Image</div>
                                         </div>
                                     ) : <div className="text-center opacity-60"><Camera className="mx-auto text-dusty-rose mb-2" /><p className="text-xs font-bold">Upload Model</p></div>}
@@ -467,36 +494,36 @@ const App: React.FC = () => {
 
                             {/* Multi-Product Upload */}
                             <div className="space-y-2">
-                                <label className="text-[10px] font-bold uppercase tracking-widest text-cool-slate ml-2">Carousel Products (Kit)</label>
-                                <div className="h-64 border-2 border-dashed border-warm-taupe rounded-2xl flex flex-col p-4 bg-oatmeal/20 transition-all hover:bg-oatmeal/30 overflow-y-auto no-scrollbar">
-                                    <input type="file" ref={carouselProductInputRef} onChange={handleCarouselProductChange} className="hidden" accept="image/*" multiple />
+                                <label className="text-[10px] font-bold uppercase tracking-widest text-cool-slate ml-2">{studioMode === 'model_product' ? 'Product Kit' : 'Carousel Products'}</label>
+                                <div className="h-64 border-2 border-dashed border-warm-taupe rounded-2xl flex flex-col p-4 bg-oatmeal/20 transition-all hover:bg-oatmeal/30 overflow-y-auto hide-scrollbar">
+                                    <input type="file" ref={studioMode === 'model_product' ? productStudioInputRef : carouselProductInputRef} onChange={studioMode === 'model_product' ? handleProductStudioChange : handleCarouselProductChange} className="hidden" accept="image/*" multiple />
                                     
-                                    {carouselProductPreviews.length > 0 ? (
+                                    {(studioMode === 'model_product' ? productPreviews : carouselProductPreviews).length > 0 ? (
                                         <div className="grid grid-cols-2 gap-3">
-                                            {carouselProductPreviews.map((p, i) => (
+                                            {(studioMode === 'model_product' ? productPreviews : carouselProductPreviews).map((p, i) => (
                                                 <div key={i} className="relative aspect-square">
                                                     <img src={p} className="w-full h-full object-cover rounded-lg border-2 border-white shadow-sm" />
-                                                    <button onClick={(e) => { e.stopPropagation(); removeProductFromCarousel(i); }} className="absolute -top-1 -right-1 bg-espresso text-white p-1 rounded-full shadow-md hover:bg-red-500 transition-all">
+                                                    <button onClick={(e) => { e.stopPropagation(); studioMode === 'model_product' ? removeProductFromStudio(i) : removeProductFromCarousel(i); }} className="absolute -top-1 -right-1 bg-espresso text-white p-1 rounded-full shadow-md hover:bg-red-500 transition-all">
                                                         <X className="w-3 h-3" />
                                                     </button>
                                                 </div>
                                             ))}
-                                            <button onClick={() => carouselProductInputRef.current?.click()} className="aspect-square rounded-lg border-2 border-dashed border-warm-taupe flex flex-col items-center justify-center bg-white/50 hover:bg-white transition-all">
+                                            <button onClick={() => (studioMode === 'model_product' ? productStudioInputRef : carouselProductInputRef).current?.click()} className="aspect-square rounded-lg border-2 border-dashed border-warm-taupe flex flex-col items-center justify-center bg-white/50 hover:bg-white transition-all">
                                                 <Plus className="w-5 h-5 text-sage-green" />
                                                 <span className="text-[10px] font-bold mt-1 uppercase">Add</span>
                                             </button>
                                         </div>
                                     ) : (
-                                        <div className="flex-1 flex flex-col items-center justify-center cursor-pointer" onClick={() => carouselProductInputRef.current?.click()}>
+                                        <div className="flex-1 flex flex-col items-center justify-center cursor-pointer" onClick={() => (studioMode === 'model_product' ? productStudioInputRef : carouselProductInputRef).current?.click()}>
                                             <Tag className="mx-auto text-sage-green mb-2" />
-                                            <p className="text-xs font-bold opacity-60">Upload Product Kit</p>
+                                            <p className="text-xs font-bold opacity-60">Upload Product(s)</p>
                                         </div>
                                     )}
                                 </div>
                             </div>
                          </div>
                          
-                         {(carouselModelPreview && carouselProductPreviews.length > 0) && (
+                         {(studioMode === 'carousel' && carouselModelPreview && carouselProductPreviews.length > 0) && (
                              <div className="bg-white rounded-2xl p-6 border border-warm-taupe/30 animate-in fade-in">
                                  <h3 className="font-bold text-[10px] text-espresso uppercase tracking-widest mb-4 flex items-center gap-2"><Palette className="w-3 h-3" /> Brand Theme Color</h3>
                                  <div className="flex flex-wrap gap-3 justify-center">
@@ -559,8 +586,7 @@ const App: React.FC = () => {
 
                 {(studioMode !== 'copy' && (file || productFiles.length > 0 || carouselModelFile)) && (
                   <div className="bg-white rounded-2xl p-8 shadow-sm border border-warm-taupe/30 space-y-8 animate-in fade-in slide-in-from-top-2 duration-500">
-                    {/* Toggle for Model/Product specific sub-modes */}
-                    {(studioMode === 'model' || studioMode === 'product') && (
+                    {(studioMode === 'model' || studioMode === 'product' || studioMode === 'model_product') && (
                         <div>
                             <label className="text-[10px] font-bold uppercase tracking-widest text-cool-slate mb-4 block">Generation Mode</label>
                             <div className="flex gap-4">
@@ -605,7 +631,7 @@ const App: React.FC = () => {
                     
                     {generationType === 'directors' && (
                         <div className="p-4 bg-alabaster rounded-xl border border-warm-taupe/20 text-center">
-                            <p className="text-xs text-cool-slate italic">"Director's Cut will generate 5 professional camera angles of your uploaded source, preserving all details 100%."</p>
+                            <p className="text-xs text-cool-slate italic">"Director's Cut will generate 5 professional camera angles of your source, preserving all details 100%."</p>
                         </div>
                     )}
                   </div>
@@ -619,8 +645,8 @@ const App: React.FC = () => {
                         <p className="text-[10px] uppercase tracking-widest text-sage-green font-bold">Luxe Aura Engine Working</p>
                     </div>
                   ) : (
-                    <Button onClick={handleGenerate} className="w-full md:w-auto min-w-[280px] shadow-xl hover:scale-105 transition-transform" variant={studioMode === 'product' ? 'secondary' : 'primary'}>
-                        {status === GenerationStatus.ERROR ? 'RETRY GENERATION' : `GENERATE ${studioMode.toUpperCase()} ASSETS`}
+                    <Button onClick={handleGenerate} className="w-full md:w-auto min-w-[280px] shadow-xl hover:scale-105 transition-transform" variant={studioMode === 'product' || studioMode === 'model_product' ? 'secondary' : 'primary'}>
+                        {status === GenerationStatus.ERROR ? 'RETRY GENERATION' : `GENERATE ${studioMode.replace('_', ' X ').toUpperCase()} ASSETS`}
                     </Button>
                   )}
                 </div>
@@ -628,7 +654,7 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {copyResult && (
+            {(copyResult && !showTweakPanel) && (
                 <div className="space-y-8 pb-12 animate-in fade-in slide-in-from-bottom-10 duration-700">
                     <div className="flex justify-between items-center border-b border-warm-taupe/30 pb-4">
                         <div className="space-y-2">
@@ -644,7 +670,10 @@ const App: React.FC = () => {
                             </div>
                           )}
                         </div>
-                        <Button variant="outline" onClick={startNewSession} className="text-xs py-1.5">New Session</Button>
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setShowTweakPanel(true)} className="text-xs py-1.5 flex items-center gap-1"><Settings2 className="w-3 h-3" /> Tweak & Redo</Button>
+                            <Button variant="outline" onClick={startNewSession} className="text-xs py-1.5">New Session</Button>
+                        </div>
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         {renderCopySection("Email Strategy", copyResult.emailContent, 'email')}
@@ -654,7 +683,7 @@ const App: React.FC = () => {
                 </div>
             )}
 
-            {results.length > 0 && (
+            {(results.length > 0 && !showTweakPanel) && (
               <div className="space-y-12 animate-in fade-in slide-in-from-bottom-10 duration-700">
                 <div className="flex flex-col md:flex-row justify-between items-end border-b border-warm-taupe/30 pb-4 gap-4">
                     <div>
@@ -662,6 +691,7 @@ const App: React.FC = () => {
                         <p className="text-sage-green italic text-sm">Select an image to expand with Director's Cut or create mockups.</p>
                     </div>
                     <div className="flex gap-4">
+                        <Button variant="outline" onClick={() => setShowTweakPanel(true)} className="text-xs py-2 px-6 flex items-center gap-2"><Settings2 className="w-3 h-3" /> Tweak Directives</Button>
                         <Button onClick={handleGenerate} className="text-xs py-2 px-6 flex items-center gap-2"><RefreshCw className="w-3 h-3" /> Regenerate</Button>
                         <Button variant="outline" onClick={startNewSession} className="text-xs py-2 px-6">New Session</Button>
                     </div>
@@ -724,15 +754,13 @@ const App: React.FC = () => {
                         </button>
                     )}
                     
-                    {/* Reshoot Angle Logic */}
                     <div className="w-px h-8 bg-warm-taupe/30"></div>
                     <button onClick={() => handleDirectorCut(lightboxImage)} className="flex flex-col items-center gap-1 text-sage-green hover:text-espresso transition-colors">
                         <Video className="w-6 h-6" />
                         <span className="text-[9px] font-bold uppercase tracking-widest">RESHOOT</span>
                     </button>
 
-                    {/* Mockup Logic */}
-                    {lightboxImage.category === 'avatar' && (
+                    {(lightboxImage.category === 'avatar' || lightboxImage.category === 'model_product') && (
                         <>
                             <div className="w-px h-8 bg-warm-taupe/30"></div>
                             <button onClick={() => triggerProductUpload(lightboxImage)} className="flex flex-col items-center gap-1 text-almond-buff hover:text-espresso transition-colors">
