@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { SCENERIES, STYLES, POSES, CAMERA_ANGLES, EXPRESSIONS, SYSTEM_INSTRUCTION, WORKFLOW_ANGLES, PRODUCT_ANGLES } from '../constants';
+import { SCENERIES, STYLES, SYSTEM_INSTRUCTION } from '../constants';
 import { GeneratedImage, GeneratedCopy } from '../types';
 
 export const fileToGenerativePart = async (file: File): Promise<string> => {
@@ -46,6 +46,45 @@ export const generateAvatarVariations = async (
   return result ? [result] : [];
 };
 
+export const generateBackground = async (
+  options: { 
+    sceneryId?: string; 
+    styleId?: string; 
+    customPrompt?: string; 
+    colorHex?: string;
+    aspectRatio: string 
+  }
+): Promise<GeneratedImage[]> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const scenery = SCENERIES.find(s => s.id === options.sceneryId)?.prompt || "luxury environment";
+  const style = STYLES.find(s => s.id === options.styleId)?.prompt || "minimalist aesthetic";
+  const color = options.colorHex ? `Dominant color palette: ${options.colorHex}.` : "";
+  
+  const prompt = `
+    ${SYSTEM_INSTRUCTION}
+    CATEGORY: Environmental Background / Texture Study.
+    SCENERY: ${scenery}.
+    STYLE: ${style}.
+    CUSTOM DETAILS: ${options.customPrompt || "A clean, high-end editorial background shot."}
+    ${color}
+    
+    VISUAL RULES:
+    - NO PEOPLE or models. Focus solely on environment, objects, textures, and lighting.
+    - If "macro" is mentioned, focus on extreme texture (silk ripples, water droplets, cream swirls, stone grain).
+    - Maintain a "Soft Life" pinterest aesthetic.
+    - Lighting should be soft, natural, and expensive-looking.
+  `;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-image',
+    contents: { parts: [{ text: prompt }] },
+    config: { imageConfig: { aspectRatio: options.aspectRatio as any } }
+  });
+  
+  const result = extractImageFromResponse(response, options.customPrompt || "Aesthetic Background", "background");
+  return result ? [result] : [];
+};
+
 export const generateContextualCarousel = async (
   productText: string,
   modelXProduct: { data: string; mimeType: string },
@@ -56,16 +95,16 @@ export const generateContextualCarousel = async (
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const themeInfo = options.themeColorHex ? `THEME COLOR: ${options.themeColorName} (${options.themeColorHex})` : "THEME COLOR: Use colors from product.";
   const slideConfigs = [
-    { label: '1. THUMBNAIL (The Hook)', prompt: `SLIDE 1: THUMBNAIL Hook. Large Times New Roman. Hook: ${productText}`, refs: [modelOnly, productOnly] },
+    { label: '1. THUMBNAIL (The Hook)', prompt: `SLIDE 1: THUMBNAIL Hook. Large Times New Roman font. Hook: ${productText}`, refs: [modelOnly, productOnly] },
     { label: '2. THE SOLUTION (Educational)', prompt: `SLIDE 2: EDUCATIONAL. Benefit from: ${productText}`, refs: [modelXProduct] },
     { label: '3. THE TRANSFORMATION (FOMO)', prompt: `SLIDE 3: FOMO shot. results from: ${productText}`, refs: [modelOnly, productOnly] },
     { label: '4. THE CRAFT (Product Hero)', prompt: `SLIDE 4: PRODUCT Detail. From: ${productText}`, refs: [productOnly] },
     { label: '5. THE CALL (CTA)', prompt: `SLIDE 5: CTA. Join elite. From: ${productText}`, refs: [modelXProduct, productOnly] }
   ];
 
-  const promises = slideConfigs.map(async (config, index) => {
+  const promises = slideConfigs.map(async (config) => {
     try {
-      const fullPrompt = `${SYSTEM_INSTRUCTION} ${config.prompt} ${themeInfo} CORE TYPOGRAPHY: Elegant Times New Roman, large for mobile. 3:4 ratio.`;
+      const fullPrompt = `${SYSTEM_INSTRUCTION} ${config.prompt} ${themeInfo} CORE TYPOGRAPHY: Elegant Times New Roman font, large size for mobile accessibility. 3:4 ratio.`;
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: { parts: [{ text: fullPrompt }, ...config.refs.map(r => ({ inlineData: { mimeType: r.mimeType, data: r.data } }))] },
@@ -86,7 +125,31 @@ export const generateMarketingCopy = async (
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `Write luxury marketing copy for "${product}". Context: ${context}. Target Audience: ${audience}. Return a JSON object with keys: productName, emailContent, socialContent, salesPageContent. Keep email content professional, social content catchy with emojis, and sales page content persuasive.`,
+    contents: `Act as a world-class luxury marketing strategist and copywriter. Write elite-tier, long-form copy for: "${product}". 
+    CONTEXT: ${context}. 
+    AUDIENCE: ${audience}. 
+    
+    CRITICAL FORMATTING:
+    - DO NOT USE BOLDING OR ASTERISKS (**). Use clear spacing and capitalized headers instead.
+    - Provide deep, descriptive, and nuanced content.
+    - Return a JSON object with keys: productName, emailContent, socialContent, salesPageContent.
+
+    SPECIFIC CONTENT REQUIREMENTS:
+    
+    1. socialContent (Social Media Scripts):
+       - Structure as "Script A: The Main Character Energy" and "Script B: The Durability/Educational Test".
+       - Include sections for VISUAL, AUDIO/VOICEOVER, ON-SCREEN TEXT, and CAPTION for each script.
+       - Use a high-conversion, viral storytelling tone.
+
+    2. emailContent (The Luxury Multi-Step Sequence):
+       - Provide a 4-Email Sequence: Email 1 (The Tease), Email 2 (The Scent/Product Architecture), Email 3 (Quiet Luxury Social Proof), Email 4 (The Closing).
+       - Include SUBJECT and BODY for each email.
+
+    3. salesPageContent (Signature Sales Copy):
+       - Include a compelling HEADLINE and SUB-HEADLINE.
+       - Provide an "OLFACTORY PYRAMID" or "PRODUCT HIERARCHY" section (Top/Heart/Base notes).
+       - Use sensory language (e.g., 'velvety heart', 'luminous symphony', 'sanctuary of warmth').
+       - Explain the artisanal craftsmanship and why it is a 'must-have' luxury.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -103,14 +166,15 @@ export const generateMarketingCopy = async (
   });
 
   try {
-    const data = JSON.parse(response.text || "{}");
+    const jsonStr = response.text || "{}";
+    const data = JSON.parse(jsonStr);
     return {
       id: crypto.randomUUID(),
       timestamp: Date.now(),
       productName: data.productName || product,
-      emailContent: data.emailContent || "Copy generation failed.",
-      socialContent: data.socialContent || "Copy generation failed.",
-      salesPageContent: data.salesPageContent || "Copy generation failed."
+      emailContent: data.emailContent || "Generation failed.",
+      socialContent: data.socialContent || "Generation failed.",
+      salesPageContent: data.salesPageContent || "Generation failed."
     };
   } catch (e) {
     return {

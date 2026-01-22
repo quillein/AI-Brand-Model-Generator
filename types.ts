@@ -13,7 +13,7 @@ export interface GeneratedImage {
   prompt: string;
   scenario: string;
   timestamp: number;
-  category: 'avatar' | 'product' | 'carousel' | 'model_product';
+  category: 'avatar' | 'product' | 'carousel' | 'model_product' | 'background';
   videoPrompt?: string;
 }
 
